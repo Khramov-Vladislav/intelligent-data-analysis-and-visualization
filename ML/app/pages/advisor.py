@@ -71,6 +71,11 @@ progress = 0
 run_info = "Инференс еще не запускался."
 has_result = False
 threshold = float(_meta["threshold"])
+k_cost = 50.0  # во сколько раз пропуск (FN) дороже ложной тревоги (FP); «Меню кейсов», ИБ: 50–100
+tau_opt = threshold
+k_cost_now = k_tau_opt = ""
+fig_cost = None
+COST_GRID = np.round(np.arange(0.01, 0.99, 0.01), 2)
 k_queue = k_flagged = k_load = k_precision = k_recall = k_missed = ""
 fig_cm = fig_pr = fig_hist = None
 QUEUE_COLUMNS = ["EntityId", "Создан", "Критичность", "Пиктограмма IRP", "Наименование", "Оценка"]
@@ -110,6 +115,9 @@ def _apply_threshold(state: State):
     recall = tp / max(tp + fn, 1)
     flagged = int((queue["Оценка"] >= t).sum())
     curve_p, curve_r, _ = precision_recall_curve(y, p)
+    k = max(float(state.k_cost), 1.0)
+    costs = np.array([k * ((p < g) & (y == 1)).sum() + ((p >= g) & (y == 0)).sum() for g in COST_GRID])
+    best = float(COST_GRID[int(np.argmin(costs))])
 
     view = queue.sort_values("Оценка", ascending=False).head(500).copy()
     view["Оценка"] = view["Оценка"].round(3)
@@ -126,6 +134,10 @@ def _apply_threshold(state: State):
         s.fig_cm = charts.confusion_matrix_fig(tp, fn, fp, tn)
         s.fig_pr = charts.pr_curve_fig(curve_p, curve_r, precision, recall)
         s.fig_hist = charts.score_histogram(queue["Оценка"].to_numpy(), t)
+        s.tau_opt = best
+        s.k_cost_now = fmt_int(round(k * fn + fp))
+        s.k_tau_opt = f"{best:.2f}".replace(".", ",")
+        s.fig_cost = charts.cost_curve_fig(COST_GRID, costs, t, best, k)
         s.queue_table = view[QUEUE_COLUMNS]
 
 
@@ -177,6 +189,17 @@ def on_threshold(state: State, var_name: str = "", value=None):
         _apply_threshold(state)
 
 
+def on_k_cost(state: State, var_name: str = "", value=None):
+    if state.has_result:
+        _apply_threshold(state)
+
+
+def on_optimal_threshold(state: State):
+    """Кнопка «Порог по стоимости»: ставит τ*, минимизирующий FN·k + FP на отложенной выборке."""
+    state.threshold = state.tau_opt
+    on_threshold(state)
+
+
 def on_reset_threshold(state: State):
     state.threshold = float(_meta["threshold"])
     on_threshold(state)
@@ -210,6 +233,10 @@ page = Markdown("""
 
 <|По умолчанию|button|on_action=on_reset_threshold|>
 
+<|{k_cost}|number|label=Цена пропуска k (FN = k × FP)|min=1|on_change=on_k_cost|class_name=fullwidth|>
+
+<|Порог по стоимости (τ*)|button|on_action=on_optimal_threshold|>
+
 Оценка ≥ τ → карточка уходит аналитику «к разбору» в первую очередь. Ниже порога — кандидат в FP, но итоговый вердикт все равно за аналитиком.
 |>
 |>
@@ -220,7 +247,7 @@ page = Markdown("""
 |>
 
 <|part|render={has_result}|
-<|layout|columns=1 1 1 1 1 1|gap=12px|
+<|layout|columns=1 1 1 1 1 1 1|gap=12px|
 <|part|class_name=card|
 **В очереди**
 <|{k_queue}|text|class_name=kpi|>
@@ -245,6 +272,10 @@ page = Markdown("""
 **Пропущено (FN)**
 <|{k_missed}|text|class_name=kpi signal|>
 |>
+<|part|class_name=card|
+**Стоимость ошибок**
+<|{k_cost_now}|text|class_name=kpi|>
+|>
 |>
 
 *Точность, полнота и FN — на отложенной выборке с известным фактом; доля очереди — на карточках без вердикта.*
@@ -255,7 +286,13 @@ page = Markdown("""
 <|chart|figure={fig_pr}|>
 |>
 
+<|layout|columns=1 1|gap=12px|
+<|chart|figure={fig_cost}|>
+
 <|chart|figure={fig_hist}|>
+|>
+
+Стоимость — в «ценах ложной тревоги»: FN·k + FP на отложенной выборке. Оптимальный порог при текущем k: <|{k_tau_opt}|text|>. Сам k — оценка заказчика (в «Меню кейсов» для ИБ ≈ 50–100), а не измеренная величина.
 
 ## Очередь по убыванию оценки (топ-500)
 

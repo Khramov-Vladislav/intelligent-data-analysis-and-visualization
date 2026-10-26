@@ -281,3 +281,25 @@ def pdp_fig(feature: str, grid: list, pdp: np.ndarray, ice: np.ndarray, observed
     if not numeric:
         fig.update_xaxes(tickangle=-30, row=2, col=1)
     return fig
+
+
+def cost_curve_fig(thresholds, costs, current: float, best: float, k: float) -> go.Figure:
+    """Суммарная стоимость ошибок FN·k + FP (в «ценах ложной тревоги») на отложенной выборке по порогам."""
+    fig = go.Figure()
+    fig.add_scatter(x=thresholds, y=costs, mode="lines", line=dict(color=GREY, width=2),
+                    hovertemplate="τ = %{x:.2f}: стоимость %{y:,.0f}<extra></extra>")
+    i_cur = int(np.argmin(np.abs(np.asarray(thresholds) - current)))
+    i_best = int(np.argmin(costs))
+    same = abs(current - best) < 0.005
+    fig.add_scatter(x=[thresholds[i_best]], y=[costs[i_best]], mode="markers+text",
+                    marker=dict(color=SIGNAL, size=11),
+                    text=[f"τ* = {best:.2f}" + (" = текущий τ" if same else "")],
+                    textposition="top right", hoverinfo="skip")
+    if not same:
+        fig.add_scatter(x=[thresholds[i_cur]], y=[costs[i_cur]], mode="markers+text",
+                        marker=dict(color=ACCENT, size=11), text=[f"текущий τ = {current:.2f}"],
+                        textposition="top center", hoverinfo="skip")
+    _layout(fig, f"Стоимость ошибок FN·k + FP при k = {k:g} (минимум — τ*)", height=300)
+    fig.update_xaxes(title="Порог τ", range=[0, 1])
+    fig.update_yaxes(title="Стоимость, в ценах FP", showgrid=True, gridcolor="#F1F3F4", rangemode="tozero")
+    return fig
