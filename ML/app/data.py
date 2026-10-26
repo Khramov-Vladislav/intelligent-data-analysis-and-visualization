@@ -56,11 +56,38 @@ def kpis(df: pd.DataFrame) -> dict:
     }
 
 
-TABLE_COLUMNS = ["EntityId", "Создан", "Критичность", "Вердикт", "Пиктограмма IRP", "Группа устранения", "Алерт"]
+def filter_cards(
+    df: pd.DataFrame,
+    start: pd.Timestamp,
+    end: pd.Timestamp,
+    crits: list[str],
+    groups: list[str],
+    categories: list[str],
+    only_open: bool,
+) -> pd.DataFrame:
+    """Срез карточек по фильтрам; пустой список в фильтре означает «все значения»."""
+    mask = df["Дата"].between(start, end)
+    if crits:
+        mask &= df["Критичность"].isin(crits)
+    if groups:
+        mask &= df["Группа устранения"].isin(groups)
+    if categories:
+        mask &= df["Пиктограмма IRP"].isin(categories)
+    if only_open:
+        mask &= df["Вердикт"] == NO_VERDICT
+    return df[mask]
+
+
+def options(df: pd.DataFrame, column: str) -> list[str]:
+    """Значения для селектора, от частых к редким."""
+    return df[column].dropna().value_counts().index.astype(str).tolist()
+
+
+TABLE_COLUMNS =["EntityId", "Создан", "Критичность", "Вердикт", "Пиктограмма IRP", "Группа устранения", "Алерт"]
 
 
 def table_view(df: pd.DataFrame) -> pd.DataFrame:
     """Компактное представление для таблицы: без служебных полей."""
-    view = df[TABLE_COLUMNS].copy()
+    view = df[TABLE_COLUMNS].reset_index(drop=True)
     view["Критичность"] = view["Критичность"].astype(str)
     return view

@@ -17,3 +17,24 @@
   color: #5f6368;
   font-size: 0.85rem;
 }
+
+.filters {
+  position: sticky;
+  top: 12px;
+}
+
+.fullwidth {
+  width: 100%;
+}
+
+.card-details {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid #dadce0;
+}
+
+.alert-text {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 0.9rem;
+}

@@ -64,8 +64,11 @@ def verdict_bars(df: pd.DataFrame) -> go.Figure:
         textposition="outside", cliponaxis=False,
         hovertemplate="%{y}: %{x}<extra></extra>",
     ))
-    _layout(fig, "Вердикты аналитиков: почти две трети — ложные срабатывания")
+    fp_share = share.get(FP, 0.0)
+    _layout(fig, f"Вердикты аналитиков: ложных срабатываний {fp_share:.0%}".replace("%", " %"))
     _hbar_room(fig, counts.values)
+    # Не даем 1–2 категориям растянуться на всю высоту панели.
+    fig.update_yaxes(range=[-0.5, max(len(counts), 5) - 0.5])
     return fig
 
 
