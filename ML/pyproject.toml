@@ -1,0 +1,15 @@
+[project]
+name = "iavd-soc-app"
+version = "0.1.0"
+description = "ИАиВД, трек ML-инжиниринг: Taipy-приложение для сортировки алертов SOC"
+authors = [{ name = "Khramov Vladislav" }]
+requires-python = ">=3.10,<3.13"
+dependencies = [
+    "taipy (>=4.0,<5.0)",
+    "pandas (>=2.0)",
+    "pyarrow (>=15.0)",
+    "plotly (>=5.20)",
+]
+
+[tool.poetry]
+package-mode = false

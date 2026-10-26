@@ -1,0 +1,19 @@
+.subtitle {
+  color: #5f6368;
+}
+
+.kpi {
+  display: block;
+  font-size: 1.8rem;
+  font-weight: 600;
+  color: #3c4043;
+}
+
+.kpi.signal {
+  color: #d93025;
+}
+
+.taipy-text.label {
+  color: #5f6368;
+  font-size: 0.85rem;
+}
