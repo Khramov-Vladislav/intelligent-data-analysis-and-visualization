@@ -112,3 +112,56 @@ def hourly_profile(df: pd.DataFrame) -> go.Figure:
     fig.update_xaxes(tickmode="array", tickvals=list(range(0, 24, 3)), ticksuffix=":00")
     fig.update_yaxes(showgrid=True, gridcolor="#F1F3F4")
     return fig
+
+
+# ---- Модель-советчик (3.6)
+
+def confusion_matrix_fig(tp: int, fn: int, fp: int, tn: int) -> go.Figure:
+    """Матрица ошибок: строки — факт, столбцы — предсказание (как в лекции 3.1).
+    Цвет — доля строки: так видно, какую часть каждого факта модель отнесла верно."""
+    rows = [[tp, fn], [fp, tn]]
+    share = [[v / max(sum(r), 1) for v in r] for r in rows]
+    labels = [["TP · найдено", "FN · пропущено"], ["FP · ложная тревога", "TN · корректное молчание"]]
+    text = [[f"{labels[i][j]}<br><b>{rows[i][j]:,}</b> ({share[i][j]:.0%})".replace(",", " ")
+             for j in range(2)] for i in range(2)]
+    fig = go.Figure(go.Heatmap(
+        z=share, x=["Предсказано: инцидент", "Предсказано: FP"], y=["Факт: инцидент", "Факт: FP"],
+        text=text, texttemplate="%{text}", colorscale=[[0, "#F8F9FA"], [1, "#BDC1C6"]], zmin=0, zmax=1,
+        showscale=False, hoverinfo="skip", xgap=3, ygap=3,
+    ))
+    _layout(fig, "Матрица ошибок на отложенной выборке", height=300)
+    fig.update_yaxes(autorange="reversed")
+    fig.update_xaxes(side="top", linecolor="white")
+    fig.update_layout(margin=dict(l=10, r=10, t=80, b=10))
+    return fig
+
+
+def pr_curve_fig(precision, recall, point_p: float, point_r: float) -> go.Figure:
+    """Кривая точности и полноты с рабочей точкой текущего порога."""
+    fig = go.Figure()
+    fig.add_scatter(x=recall, y=precision, mode="lines", line=dict(color=GREY, width=2),
+                    hovertemplate="полнота %{x:.0%} · точность %{y:.0%}<extra></extra>")
+    fig.add_scatter(x=[point_r], y=[point_p], mode="markers+text", marker=dict(color=ACCENT, size=11),
+                    text=[f"P {point_p:.0%} · R {point_r:.0%}  "], textposition="top left",
+                    hoverinfo="skip")
+    _layout(fig, "Кривая точности и полноты (точка — текущий порог)", height=300)
+    fig.update_xaxes(title="Полнота", tickformat=".0%", range=[0, 1.02])
+    fig.update_yaxes(title="Точность", tickformat=".0%", range=[0, 1.02], showgrid=True, gridcolor="#F1F3F4")
+    return fig
+
+
+def score_histogram(scores, threshold: float) -> go.Figure:
+    """Распределение модельных оценок в очереди; справа от порога — карточки «к разбору»."""
+    fig = go.Figure()
+    above = scores[scores >= threshold]
+    below = scores[scores < threshold]
+    bins = dict(start=0, end=1, size=0.02)
+    fig.add_histogram(x=below, xbins=bins, marker_color="#DADCE0", hovertemplate="%{y}<extra></extra>")
+    fig.add_histogram(x=above, xbins=bins, marker_color=SIGNAL, hovertemplate="%{y}<extra></extra>")
+    fig.add_vline(x=threshold, line=dict(color=DARK, width=1, dash="dot"),
+                  annotation_text=f"порог {threshold:.2f}", annotation_position="top")
+    _layout(fig, "Оценки модели по очереди без вердикта (красным — к разбору; шкала логарифмическая)", height=300)
+    fig.update_layout(barmode="overlay", bargap=0.05)
+    fig.update_xaxes(title="Модельная оценка «инцидент»", range=[0, 1])
+    fig.update_yaxes(type="log", title="Карточек", showgrid=True, gridcolor="#F1F3F4")
+    return fig

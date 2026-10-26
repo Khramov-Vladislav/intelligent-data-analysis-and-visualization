@@ -30,11 +30,15 @@ NO_VERDICT = "Не указан"
 FP = "False Positive"
 
 
+def dataset_path() -> Path:
+    """Путь к датасету; переопределяется переменной IAVD_DATA."""
+    return Path(os.environ.get("IAVD_DATA", DEFAULT_PATH))
+
+
 @lru_cache(maxsize=1)
 def load_cards() -> pd.DataFrame:
-    """Читает датасет один раз на процесс; путь можно переопределить переменной IAVD_DATA."""
-    path = Path(os.environ.get("IAVD_DATA", DEFAULT_PATH))
-    df = pd.read_parquet(path, columns=COLUMNS)
+    """Читает датасет один раз на процесс."""
+    df = pd.read_parquet(dataset_path(), columns=COLUMNS)
     # Время хранится в UTC; контрольные числа банка EDA (пик в 8:00) посчитаны в UTC.
     df["Создан"] = df["Создан"].dt.tz_convert(None)
     df["Дата"] = df["Создан"].dt.normalize()
