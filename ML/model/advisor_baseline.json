@@ -1,6 +1,6 @@
 {
   "name": "Базовая модель-советчик (HistGradientBoosting)",
-  "trained_at": "2026-10-26T17:11:53+00:00",
+  "trained_at": "2026-10-26T17:44:22+00:00",
   "sklearn": "1.9.1",
   "positive_class": "реальный инцидент",
   "features": [
@@ -32,18 +32,18 @@
   "n_train": 143684,
   "n_test": 35922,
   "test_positive_share": 0.1611,
-  "threshold": 0.344,
+  "threshold": 0.366,
   "min_recall": 0.9,
   "metrics_test": {
-    "roc_auc": 0.9121,
-    "average_precision": 0.7136,
-    "precision_at_threshold": 0.4015,
-    "recall_at_threshold": 0.9004
+    "roc_auc": 0.9184,
+    "average_precision": 0.7267,
+    "precision_at_threshold": 0.4235,
+    "recall_at_threshold": 0.9001
   },
   "temporal_check": {
     "test_from": "2025-04-07T09:13:20.560000+00:00",
-    "roc_auc": 0.5811,
-    "average_precision": 0.244,
+    "roc_auc": 0.791,
+    "average_precision": 0.3523,
     "test_positive_share": 0.0945
   }
 }

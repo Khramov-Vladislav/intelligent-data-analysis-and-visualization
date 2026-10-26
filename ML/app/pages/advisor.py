@@ -14,6 +14,7 @@ from taipy.gui import Markdown, State, get_state_id, invoke_long_callback, notif
 import charts
 from advisor import TEST_IDS, build_features, labels, load_model, load_raw, model_path, predict_scores
 from data import NO_VERDICT
+from explain import card_explanation
 
 CHUNK = 5_000
 QUEUE, HOLDOUT = "очередь", "отложенная выборка"
@@ -75,6 +76,9 @@ fig_cm = fig_pr = fig_hist = None
 QUEUE_COLUMNS = ["EntityId", "Создан", "Критичность", "Пиктограмма IRP", "Наименование", "Оценка"]
 queue_table = pd.DataFrame(columns=QUEUE_COLUMNS)  # колонки нужны сразу: по ним Taipy строит таблицу
 scored = pd.DataFrame()  # оценки по всем карточкам, пишется только в on_status
+expl_selected = False
+expl_fig = None
+expl_info = ""
 
 
 def _run_inference(state_id: str) -> pd.DataFrame:
@@ -158,6 +162,14 @@ def on_status(state: State, status, result=None):
         notify(state, "success", "Инференс завершен.")
     else:
         state.progress = int(100 * _progress.get(sid, 0))
+
+
+def on_queue_row(state: State, var_name: str, payload: dict):
+    """Клик по строке очереди: SHAP-объяснение оценки этой карточки (3 мс, синхронно)."""
+    entity_id = int(state.queue_table.loc[payload["index"], "EntityId"])
+    fig, info = card_explanation(_model, entity_id, state.threshold)
+    with state as s:
+        s.expl_fig, s.expl_info, s.expl_selected = fig, info, True
 
 
 def on_threshold(state: State, var_name: str = "", value=None):
@@ -247,7 +259,17 @@ page = Markdown("""
 
 ## Очередь по убыванию оценки (топ-500)
 
-<|{queue_table}|table|page_size=15|width=100%|>
+*Клик по строке — объяснение оценки (SHAP) ниже таблицы.*
+
+<|{queue_table}|table|page_size=15|width=100%|on_action=on_queue_row|>
+
+<|part|render={expl_selected}|
+## Почему модель так оценила карточку
+
+<|{expl_info}|text|mode=markdown|>
+
+<|chart|figure={expl_fig}|>
+|>
 |>
 |>
 |>

@@ -4,6 +4,7 @@
 несет один смысл; красный — только «требует реакции» (критичность, ложные тревоги как нагрузка);
 сетка и рамки сведены к минимуму (data-ink ratio), подписи значений вместо легенд.
 """
+import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 
@@ -164,4 +165,83 @@ def score_histogram(scores, threshold: float) -> go.Figure:
     fig.update_layout(barmode="overlay", bargap=0.05)
     fig.update_xaxes(title="Модельная оценка «инцидент»", range=[0, 1])
     fig.update_yaxes(type="log", title="Карточек", showgrid=True, gridcolor="#F1F3F4")
+    return fig
+
+
+# ---- Объяснения SHAP (3.7)
+
+def _short(text: str, n: int = 38) -> str:
+    return text if len(text) <= n else text[: n - 1] + "…"
+
+
+def _proba(logit: float) -> float:
+    return 1 / (1 + np.exp(-logit))
+
+
+def shap_waterfall(contrib: pd.DataFrame, base: float, top: int = 10, title: str = "") -> go.Figure:
+    """Waterfall локального объяснения: от средней оценки модели к оценке этой карточки.
+    Красный — вклад в сторону «инцидент», синий — в сторону «ложное срабатывание»."""
+    head, rest = contrib.iloc[:top], contrib.iloc[top:]
+    labels = [f"{_short(f'{f} = {v}')}" for f, v in zip(head["Признак"], head["Значение"])]
+    values = head["Вклад"].tolist()
+    if len(rest):
+        labels.append(f"остальные {len(rest)} признаков")
+        values.append(float(rest["Вклад"].sum()))
+    # Снизу вверх: база → вклады от меньших к большим → итог; читается сверху от самого сильного.
+    labels, values = labels[::-1], values[::-1]
+    fx = base + sum(values)
+    fig = go.Figure(go.Waterfall(
+        orientation="h",
+        y=["средняя оценка E[f(x)]"] + labels + ["оценка карточки f(x)"],
+        x=[base] + values + [0],
+        measure=["absolute"] + ["relative"] * len(values) + ["total"],
+        base=0,
+        increasing=dict(marker=dict(color=SIGNAL)),
+        decreasing=dict(marker=dict(color=ACCENT)),
+        totals=dict(marker=dict(color=DARK)),
+        text=[f"{base:+.2f}"] + [f"{v:+.2f}" for v in values] + [f"{fx:+.2f}"],
+        textposition="outside",
+        connector=dict(line=dict(color="#DADCE0", width=1)),
+        hovertemplate="%{y}: %{x:+.3f}<extra></extra>",
+    ))
+    _layout(fig, title or f"Почему такая оценка: {_proba(base):.0%} в среднем → {_proba(fx):.0%} у карточки",
+            height=110 + 30 * (len(values) + 2))
+    fig.update_xaxes(title="Лог-шансы класса «инцидент»", showgrid=True, gridcolor="#F1F3F4", zeroline=True,
+                     zerolinecolor="#DADCE0")
+    fig.update_layout(margin=dict(l=10, r=40, t=50, b=10))
+    return fig
+
+
+def shap_importance(values: np.ndarray, features, top: int = 15) -> go.Figure:
+    """Глобальная важность: средний модуль SHAP-вклада по выборке карточек."""
+    imp = pd.Series(np.abs(values).mean(axis=0), index=features).nlargest(top).sort_values()
+    fig = go.Figure(go.Bar(
+        x=imp.values, y=imp.index, orientation="h", marker_color=GREY,
+        text=[f"{v:.2f}" for v in imp.values], textposition="outside", cliponaxis=False,
+        hovertemplate="%{y}: %{x:.3f}<extra></extra>",
+    ))
+    _layout(fig, f"Важность признаков: средний |SHAP| по {len(values):,} карточкам".replace(",", " "),
+            height=120 + 26 * len(imp))
+    _hbar_room(fig, imp.values)
+    return fig
+
+
+def shap_by_value(values: np.ndarray, data: np.ndarray, feature: str, features, top: int = 12,
+                  min_count: int = 20) -> go.Figure:
+    """Вклад значений одного признака: средний SHAP по каждому частому значению (с числом карточек).
+    Значения реже min_count не показываем: среднее по 1–2 карточкам ничего не говорит о модели."""
+    j = list(features).index(feature)
+    df = pd.DataFrame({"value": data[:, j], "shap": values[:, j]})
+    g = df.groupby("value")["shap"].agg(["mean", "size"])
+    g = g[g["size"] >= min_count].nlargest(top, "size").sort_values("mean")
+    colors = [SIGNAL if v > 0 else ACCENT for v in g["mean"]]
+    fig = go.Figure(go.Bar(
+        x=g["mean"], y=[_short(str(v), 34) for v in g.index], orientation="h", marker_color=colors,
+        text=[f"{m:+.2f} · n={n}" for m, n in zip(g["mean"], g["size"])], textposition="outside",
+        cliponaxis=False, hovertemplate="%{y}: %{x:+.3f}<extra></extra>",
+    ))
+    _layout(fig, f"Вклад значений признака «{feature}» (средний SHAP; значения, встречающиеся ≥ {min_count} раз)",
+            height=120 + 28 * len(g))
+    lim = max(float(g["mean"].abs().max()) if len(g) else 0.0, 0.1) * 1.6
+    fig.update_xaxes(range=[-lim, lim], zeroline=True, zerolinecolor="#9AA0A6", showticklabels=False)
     return fig

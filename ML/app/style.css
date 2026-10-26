@@ -45,3 +45,7 @@
   font-size: 0.85rem;
   margin: 6px 0;
 }
+
+.filters {
+  overflow-wrap: anywhere;
+}

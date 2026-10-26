@@ -4,17 +4,18 @@
 """
 from taipy.gui import Gui
 
-from pages import advisor, overview
+from pages import advisor, overview, xai
 
 root = """
 <|navbar|lov={nav}|>
 """
-nav = [("/overview", "Обзор потока"), ("/advisor", "Модель-советчик")]
+nav = [("/overview", "Обзор потока"), ("/advisor", "Модель-советчик"), ("/xai", "Объяснения (XAI)")]
 
 pages = {
     "/": root,
     "overview": overview.page,
     "advisor": advisor.page,
+    "xai": xai.page,
 }
 
 if __name__ == "__main__":

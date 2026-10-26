@@ -15,6 +15,7 @@ SEP = "~~||~~"
 MODEL_DIR = Path(__file__).resolve().parents[1] / "model"
 DEFAULT_MODEL = MODEL_DIR / "advisor_baseline.joblib"
 TEST_IDS = MODEL_DIR / "advisor_baseline_test_ids.npy"  # EntityId отложенной выборки для оценки в приложении
+SHAP_SAMPLE = MODEL_DIR / "advisor_baseline_shap.npz"  # предрасчитанные SHAP-значения для глобальных графиков
 
 # Класс 1 — реальный инцидент, класс 0 — ложное срабатывание (обоснование — СРС к 3.2).
 POSITIVE_VERDICTS = ["Решён", "Не решён", "Закрыт по совокупности инцидентов", "Закрыт из родительской атаки"]
@@ -120,3 +121,47 @@ def load_model():
 def predict_scores(model, X: pd.DataFrame) -> np.ndarray:
     """Модельная оценка класса «инцидент» (y_pred_proba)."""
     return model.predict_proba(X)[:, 1]
+
+
+# ---- Объяснения (SHAP)
+
+_explainers: dict[int, object] = {}
+
+
+def _split(model):
+    """Пайплайн «кодирование → бустинг» объясняем по бустингу на закодированных признаках;
+    модель без шага кодирования — как есть."""
+    steps = getattr(model, "named_steps", {})
+    if "encode" in steps and "clf" in steps:
+        return steps["encode"].transform, steps["clf"]
+    return (lambda X: X), model
+
+
+def explain_batch(model, X: pd.DataFrame) -> tuple[np.ndarray, float]:
+    """SHAP-значения в лог-шансах класса «инцидент» и базовое значение (средний выход модели).
+    Сумма базы и вкладов строки равна decision_function модели для этой карточки."""
+    import shap
+
+    transform, est = _split(model)
+    explainer = _explainers.get(id(est))
+    if explainer is None:
+        explainer = _explainers[id(est)] = shap.TreeExplainer(est)
+    values = explainer.shap_values(transform(X))
+    if isinstance(values, list):  # старые версии shap: список по классам
+        values = values[1]
+    values = np.asarray(values)
+    if values.ndim == 3:  # (карточки, признаки, классы)
+        values = values[:, :, 1]
+    base = np.ravel(explainer.expected_value)
+    return values, float(base[-1])
+
+
+def explain_card(model, X_row: pd.DataFrame) -> tuple[pd.DataFrame, float]:
+    """Локальное объяснение одной карточки: признак, его значение и вклад, по убыванию |вклада|."""
+    values, base = explain_batch(model, X_row)
+    out = pd.DataFrame({
+        "Признак": X_row.columns,
+        "Значение": X_row.iloc[0].astype(str).replace("nan", "—").to_numpy(),
+        "Вклад": values[0],
+    })
+    return out.reindex(out["Вклад"].abs().sort_values(ascending=False).index).reset_index(drop=True), base
