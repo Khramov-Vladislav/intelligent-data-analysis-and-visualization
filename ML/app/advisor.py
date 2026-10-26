@@ -165,3 +165,26 @@ def explain_card(model, X_row: pd.DataFrame) -> tuple[pd.DataFrame, float]:
         "Вклад": values[0],
     })
     return out.reindex(out["Вклад"].abs().sort_values(ascending=False).index).reset_index(drop=True), base
+
+
+# ---- Частичная зависимость (PDP / ICE)
+
+def pdp_grid(X: pd.DataFrame, feature: str, points: int = 20, top: int = 12) -> list:
+    """Сетка значений признака: для числовых — квантили 5–95 % (без экстраполяции за пределы
+    основной массы данных), для категориальных — самые частые значения."""
+    col = X[feature]
+    if feature in NUMERIC:
+        qs = col.dropna().quantile(np.linspace(0.05, 0.95, points)).round(2)
+        return sorted(qs.unique().tolist())
+    return col.value_counts().head(top).index.tolist()
+
+
+def partial_dependence(model, X: pd.DataFrame, feature: str, grid: list) -> tuple[np.ndarray, np.ndarray]:
+    """PDP и ICE: каждой карточке выборки по очереди подставляем значение из сетки и усредняем оценку.
+    Возвращает (pdp[len(grid)], ice[n_cards, len(grid)]) в шкале модельной оценки «инцидент»."""
+    ice = np.empty((len(X), len(grid)))
+    for k, value in enumerate(grid):
+        X_mod = X.copy()
+        X_mod[feature] = value
+        ice[:, k] = predict_scores(model, X_mod)
+    return ice.mean(axis=0), ice

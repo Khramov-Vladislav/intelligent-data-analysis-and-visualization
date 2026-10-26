@@ -240,8 +240,44 @@ def shap_by_value(values: np.ndarray, data: np.ndarray, feature: str, features, 
         text=[f"{m:+.2f} · n={n}" for m, n in zip(g["mean"], g["size"])], textposition="outside",
         cliponaxis=False, hovertemplate="%{y}: %{x:+.3f}<extra></extra>",
     ))
-    _layout(fig, f"Вклад значений признака «{feature}» (средний SHAP; значения, встречающиеся ≥ {min_count} раз)",
+    _layout(fig, f"Вклад значений «{feature}»: средний SHAP (значения с n ≥ {min_count})",
             height=120 + 28 * len(g))
     lim = max(float(g["mean"].abs().max()) if len(g) else 0.0, 0.1) * 1.6
     fig.update_xaxes(range=[-lim, lim], zeroline=True, zerolinecolor="#9AA0A6", showticklabels=False)
+    return fig
+
+
+def pdp_fig(feature: str, grid: list, pdp: np.ndarray, ice: np.ndarray, observed: pd.Series,
+            threshold: float, numeric: bool, n_ice: int = 60) -> go.Figure:
+    """PDP (жирная линия) поверх ICE-линий отдельных карточек; снизу — распределение признака в выборке:
+    там, где данных мало, PDP опирается на подставленные, а не наблюдаемые сочетания признаков."""
+    from plotly.subplots import make_subplots
+
+    fig = make_subplots(rows=2, cols=1, shared_xaxes=True, row_heights=[0.78, 0.22], vertical_spacing=0.04)
+    x = grid if numeric else [_short(str(v), 26) for v in grid]
+    rng = np.random.default_rng(0)
+    for row in ice[rng.choice(len(ice), size=min(n_ice, len(ice)), replace=False)]:
+        fig.add_scatter(x=x, y=row, mode="lines", line=dict(color="rgba(154,160,166,0.25)", width=1),
+                        hoverinfo="skip", row=1, col=1)
+    # У категорий нет порядка: точки PDP не соединяем, чтобы линия не подразумевала тренд.
+    fig.add_scatter(x=x, y=pdp, mode="lines+markers" if numeric else "markers",
+                    line=dict(color=ACCENT, width=3), marker=dict(size=6 if numeric else 11, color=ACCENT),
+                    hovertemplate="%{x}: средняя оценка %{y:.1%}<extra></extra>", row=1, col=1)
+    fig.add_hline(y=threshold, line=dict(color=SIGNAL, width=1, dash="dot"), row=1, col=1,
+                  annotation_text=f"порог {threshold:.2f}", annotation_position="top left")
+    if numeric:
+        inside = observed[observed.between(min(grid), max(grid))]  # сетка — квантили 5–95 %
+        fig.add_histogram(x=inside, nbinsx=30, marker_color="#DADCE0", hovertemplate="%{y}<extra></extra>",
+                          row=2, col=1)
+    else:
+        vc = observed.value_counts().reindex(grid, fill_value=0)
+        fig.add_bar(x=x, y=vc.values, marker_color="#DADCE0", hovertemplate="%{y} карточек<extra></extra>",
+                    row=2, col=1)
+    _layout(fig, f"Частичная зависимость оценки от признака «{feature}» (синяя — PDP, серые — ICE отдельных карточек)",
+            height=460)
+    fig.update_yaxes(title="Оценка «инцидент»", tickformat=".0%", range=[0, 1], showgrid=True,
+                     gridcolor="#F1F3F4", row=1, col=1)
+    fig.update_yaxes(title="Карточек", row=2, col=1)
+    if not numeric:
+        fig.update_xaxes(tickangle=-30, row=2, col=1)
     return fig
