@@ -20,8 +20,9 @@ poetry install
 cd app && poetry run python main.py   # http://127.0.0.1:5050
 ```
 
-Датасет по умолчанию берется из `lecture/Dataset/iavd_incidents_raw_target.parquet`
-(в репозиторий не входит); другой путь можно задать переменной `IAVD_DATA`.
+Датасет по умолчанию берется из
+`materials/Datasets/Задание 1: Датасет карточек сок + календарь/iavd_incidents_raw_target.parquet`.
+Каталог `materials/` игнорируется Git. Другой путь можно задать переменной `IAVD_DATA`.
 Время карточек показывается в UTC, как в контрольных числах банка EDA.
 
 ## Модель-советчик

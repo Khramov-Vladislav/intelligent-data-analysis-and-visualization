@@ -6,7 +6,11 @@ from pathlib import Path
 import pandas as pd
 
 DEFAULT_PATH = (
-    Path(__file__).resolve().parents[2] / "lecture" / "Dataset" / "iavd_incidents_raw_target.parquet"
+    Path(__file__).resolve().parents[2]
+    / "materials"
+    / "Datasets"
+    / "Задание 1: Датасет карточек сок + календарь"
+    / "iavd_incidents_raw_target.parquet"
 )
 
 # Из 97 полей берем только те, что нужны интерфейсу: так датасет занимает ~0,3 ГБ вместо ~1 ГБ.

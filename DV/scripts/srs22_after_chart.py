@@ -9,7 +9,14 @@ import matplotlib.pyplot as plt
 import pandas as pd
 
 ROOT = Path(__file__).resolve().parents[2]
-SRC = Path(sys.argv[1]) if len(sys.argv) > 1 else ROOT / "lecture/Dataset/iavd_1000_incidents_raw_target.parquet"
+DEFAULT_SRC = (
+    ROOT
+    / "materials"
+    / "Datasets"
+    / "Задание 1: Датасет карточек сок + календарь"
+    / "iavd_1000_incidents_raw_target.parquet"
+)
+SRC = Path(sys.argv[1]) if len(sys.argv) > 1 else DEFAULT_SRC
 OUT = Path(sys.argv[2]) if len(sys.argv) > 2 else ROOT / "DV/img/srs22_after.png"
 
 counts = pd.read_parquet(SRC, columns=["Наименование"])["Наименование"].value_counts().head(8)[::-1]

@@ -16,7 +16,7 @@
 pip install python-docx matplotlib pandas pyarrow
 python DV/scripts/srs22_after_chart.py   # график «после» для СРС 2.2
 python DV/build_docs.py                  # все docx
-python DV/eda_answers.py lecture/Dataset/iavd_incidents_raw_target.parquet
+python DV/eda_answers.py 'materials/Datasets/Задание 1: Датасет карточек сок + календарь/iavd_incidents_raw_target.parquet'
 ```
 
 ## Исправления после проверки (26.10.2026)

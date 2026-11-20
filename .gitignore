@@ -177,6 +177,10 @@ dmypy.json
 # Pyre type checker
 .pyre/
 
+# Local course materials
+/materials/
+/task.md
+
 # pytype static type analyzer
 .pytype/
 
