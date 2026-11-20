@@ -4,6 +4,7 @@ from functools import lru_cache
 from pathlib import Path
 
 import pandas as pd
+from pyarrow.parquet import read_schema
 
 DEFAULT_PATH = (
     Path(__file__).resolve().parents[2]
@@ -32,6 +33,11 @@ COLUMNS = [
 CRIT_ORDER = ["Критическая", "Высокая", "Средняя", "Низкая", "Отсутствует"]
 NO_VERDICT = "Не указан"
 FP = "False Positive"
+RULE = "Правило корреляции SIEM"
+TAKEN_AT = "Дата взятия в работу"
+TAKE_SLA = "SLA по взятию в работу Атаки"
+TAKE_OVERDUE = "SLA просрочен (взятие в работу)"
+EDA_COLUMNS = [RULE, TAKEN_AT, TAKE_SLA, TAKE_OVERDUE]
 
 
 def dataset_path() -> Path:
@@ -42,11 +48,23 @@ def dataset_path() -> Path:
 @lru_cache(maxsize=1)
 def load_cards() -> pd.DataFrame:
     """Читает датасет один раз на процесс."""
-    df = pd.read_parquet(dataset_path(), columns=COLUMNS)
+    path = dataset_path()
+    available = set(read_schema(path).names)
+    columns = COLUMNS + [name for name in EDA_COLUMNS if name in available]
+    df = pd.read_parquet(path, columns=columns).reindex(columns=COLUMNS + EDA_COLUMNS)
     # Время хранится в UTC; контрольные числа банка EDA (пик в 8:00) посчитаны в UTC.
     df["Создан"] = df["Создан"].dt.tz_convert(None)
     df["Дата"] = df["Создан"].dt.normalize()
     df["Час"] = df["Создан"].dt.hour
+    # Нагрузка часа относится ко всему потоку, даже когда аналитик смотрит отдельную группу.
+    hour = df["Создан"].dt.floor("h")
+    df["Карточек в часе"] = hour.groupby(hour).transform("size")
+    taken_at = pd.to_datetime(df[TAKEN_AT], utc=True).dt.tz_convert(None)
+    take_minutes = (taken_at - df["Создан"]).dt.total_seconds() / 60
+    df["До взятия, мин"] = take_minutes.where(take_minutes.ge(0))
+    sla_minutes = pd.to_numeric(df[TAKE_SLA], errors="coerce") / 60_000
+    df["SLA взятия, мин"] = sla_minutes.where(sla_minutes.gt(0))
+    df["Флаг просрочки взятия"] = df[TAKE_OVERDUE].astype("string").str.lower().map({"true": 1, "false": 0})
     df["Время решения, ч"] = df["Время решения"] / 3600
     df["Критичность"] = pd.Categorical(df["Критичность"], categories=CRIT_ORDER, ordered=True)
     return df.sort_values("Создан", ascending=False, ignore_index=True)
