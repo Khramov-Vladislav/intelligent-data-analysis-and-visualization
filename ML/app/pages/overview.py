@@ -155,6 +155,10 @@ page = Markdown("""
 <|
 <|layout|columns=1 1 1 1 1|gap=12px|
 <|part|class_name=card|
+**Критические без вердикта**
+<|{kpi_critical_open}|text|class_name=kpi signal|>
+|>
+<|part|class_name=card|
 **Карточек**
 <|{kpi_total}|text|class_name=kpi|>
 |>
@@ -165,10 +169,6 @@ page = Markdown("""
 <|part|class_name=card|
 **Без вердикта**
 <|{kpi_no_verdict}|text|class_name=kpi|>
-|>
-<|part|class_name=card|
-**Критические без вердикта**
-<|{kpi_critical_open}|text|class_name=kpi signal|>
 |>
 <|part|class_name=card|
 **Медиана времени решения**
