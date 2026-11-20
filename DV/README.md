@@ -2,15 +2,24 @@
 
 Команда: Храмов Владислав, Гарбуз Александр, Семенов Илья. Группа: 5130201/40101 (константа `GROUP` в `build_docs.py`).
 
-| Работа | Задание (источник) | Файл для сдачи |
-|---|---|---|
-| СРС 1.3 · DIKW-проекция кейса | План-конспект 1.3, раздел 8 | `IAVD_SRS_1.3_DIKW.docx` |
-| СРС 2.1 · Поля, кодировки, эскиз | Опорный конспект 2.1, раздел 8 (слайд 40) | `IAVD_SRS_2.1_kodirovki_eskiz.docx` |
-| СРС 2.2 · Энскомб и «до → после» | Опорный конспект 2.2, раздел 8; чек-лист очистки графика | `IAVD_SRS_2.2_Enskomb_do_posle.docx` |
-| Практика 1.5 · Банк вопросов EDA | `iavd_eda_questions.md` | `IAVD_1.5_EDA_bank_otvety.docx`, код — `eda_answers.py` |
-| СРС 3.1 · Метрики проекта и Fβ | Опорный конспект 3.1, раздел 8 | `IAVD_SRS_3.1_metriki.docx` |
+| Работа | Задание (источник) | Markdown | PDF |
+|---|---|---|---|
+| СРС 1.3 · DIKW-проекция кейса | План-конспект 1.3, раздел 8 | [Текст](src/srs_1.3_dikw.md) | [PDF](pdf/srs_1.3_dikw.pdf) |
+| Практика 1.5 · Банк вопросов EDA | `iavd_eda_questions.md` | [Текст](src/eda_bank.md) | [PDF](pdf/eda_bank.pdf) |
+| СРС 2.1 · Поля, кодировки, эскиз | Опорный конспект 2.1, раздел 8 (слайд 40) | [Текст](src/srs_2.1_encodings.md) | [PDF](pdf/srs_2.1_encodings.pdf) |
+| СРС 2.2 · Энскомб и «до → после» | Опорный конспект 2.2, раздел 8 и чек-лист очистки графика | [Текст](src/srs_2.2_design.md) | [PDF](pdf/srs_2.2_design.pdf) |
+| СРС 2.3 · Траектория взгляда | Опорный конспект 2.3 и презентация, слайд 43 | [Текст](src/srs_2.3_gaze_pattern.md) | [PDF](pdf/srs_2.3_gaze_pattern.pdf) |
+| СРС 2.4 · EDA-гипотезы | Опорный конспект 2.4, раздел 8 | [Текст](src/srs_2.4_eda_hypotheses.md) | [PDF](pdf/srs_2.4_eda_hypotheses.pdf) |
+| СРС 3.1 · Метрики проекта и Fβ | Опорный конспект 3.1, раздел 8 | [Текст](src/srs_3.1_metrics.md) | [PDF](pdf/srs_3.1_metrics.pdf) |
 
-Исходники — `src/*.md`, изображения — `img/`. Пересборка:
+Текст редактируем в `src/*.md`, изображения лежат в `img/`. Для PDF нужны Typst 0.15 или новее, шрифты CM-Super и локальный пакет `@local/poly-report:0.1.0`. Пакет и шрифты можно установить через `make install-package install-fonts` в каталоге `poly-report`. Команды ниже запускаются из корня репозитория. Готовые PDF лежат в `pdf/`, исходники Typst – в `typst/`. Pandoc нужен для обновления файлов Typst после правки текста.
+
+```bash
+sh DV/build_typst.sh
+typst compile --root . DV/typst/srs_2.4_eda_hypotheses.typ DV/pdf/srs_2.4_eda_hypotheses.pdf
+```
+
+Ранее подготовленные DOCX можно пересобрать отдельно.
 
 ```bash
 pip install python-docx matplotlib pandas pyarrow

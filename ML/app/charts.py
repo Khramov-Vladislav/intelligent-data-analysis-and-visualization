@@ -9,6 +9,7 @@ import pandas as pd
 import plotly.graph_objects as go
 
 from data import CRIT_ORDER, FP
+from soc_eda import HOUR_LOAD_LABELS, MIN_RULE_CARDS, MIN_RULE_FP_SHARE
 
 GREY = "#9AA0A6"
 DARK = "#3C4043"
@@ -113,6 +114,81 @@ def hourly_profile(df: pd.DataFrame) -> go.Figure:
     fig.update_xaxes(tickmode="array", tickvals=list(range(0, 24, 3)), ticksuffix=":00")
     fig.update_yaxes(showgrid=True, gridcolor="#F1F3F4")
     return fig
+
+
+def _eda_layout(fig: go.Figure, title: str, empty: bool) -> go.Figure:
+    _layout(fig, title)
+    fig.update_layout(title_x=0.02, margin=dict(l=50, r=30, t=55, b=55))
+    fig.update_xaxes(automargin=True)
+    fig.update_yaxes(automargin=True)
+    if empty:
+        fig.update_xaxes(visible=False)
+        fig.update_yaxes(visible=False)
+        fig.add_annotation(
+            text="Для выбранного среза нет данных", x=0.5, y=0.5,
+            xref="paper", yref="paper", showarrow=False,
+        )
+    return fig
+
+
+def rule_noise_fig(rules: pd.DataFrame) -> go.Figure:
+    """Точка — правило SIEM. Красным выделены частые правила с высокой долей FP."""
+    fig = go.Figure(go.Scatter(
+        x=rules["cards"], y=rules["fp_share"], text=rules.index, mode="markers",
+        marker=dict(color=np.where(rules["noisy"], SIGNAL, GREY), size=8, opacity=0.8),
+        customdata=rules["false_positives"],
+        hovertemplate="%{text}<br>Карточек: %{x}<br>FP: %{customdata} (%{y:.1%})<extra></extra>",
+    ))
+    if not rules.empty:
+        fig.add_vline(x=MIN_RULE_CARDS, line_dash="dot", line_color=GREY)
+        fig.add_hline(y=MIN_RULE_FP_SHARE, line_dash="dot", line_color=GREY)
+    fig.update_xaxes(
+        title_text="Карточки с содержательным вердиктом", type="log", tickmode="array",
+        tickvals=[1, 10, 100, MIN_RULE_CARDS, 1000, 10_000], ticktext=["1", "10", "100", "300", "1 000", "10 000"],
+    )
+    fig.update_yaxes(title_text="Доля ложных тревог", tickformat=".0%", range=[-0.03, 1.06])
+    return _eda_layout(fig, "Какие правила SIEM дают больше всего шума?", rules.empty)
+
+
+def take_sla_fig(summary: pd.DataFrame) -> go.Figure:
+    """Высота столбца — доля просрочек внутри диапазона часовой нагрузки."""
+    summary = summary.loc[summary["cards"].gt(0)]
+    fig = go.Figure(go.Bar(
+        x=summary.index.astype(str), y=summary["overdue_share"], marker_color=ACCENT,
+        text=[f"{share:.1%}".replace(".", ",") for share in summary["overdue_share"]],
+        textposition="outside", customdata=summary["cards"],
+        hovertemplate="%{x} карточек в час<br>Просрочено: %{y:.1%}<br>Карточек с флагом: %{customdata}<extra></extra>",
+    ))
+    fig.update_xaxes(title_text="Карточек за календарный час (UTC)", type="category",
+                     categoryorder="array", categoryarray=HOUR_LOAD_LABELS)
+    fig.update_yaxes(title_text="Доля просрочек", tickformat=".0%", range=[0, 1.1])
+    return _eda_layout(fig, "Как нагрузка связана с просрочками SLA?", summary.empty)
+
+
+def take_time_fig(summary: pd.DataFrame) -> go.Figure:
+    """Точка — медиана времени реакции, отрезок — межквартильный диапазон."""
+    summary = summary.dropna(subset=["median"])
+    breach_labels = [
+        f"{share:.1%} из {int(count):,} карточек".replace(",", " ")
+        if count else "нет данных о нормативе"
+        for share, count in zip(summary["overdue_share"], summary["with_sla"])
+    ]
+    fig = go.Figure(go.Scatter(
+        x=summary["median"], y=summary.index, mode="markers",
+        marker=dict(color=[SIGNAL if label == "Критическая" else DARK for label in summary.index], size=10),
+        error_x=dict(
+            type="data", symmetric=False, array=summary["q3"] - summary["median"],
+            arrayminus=summary["median"] - summary["q1"], color=GREY, thickness=2, width=5,
+        ),
+        customdata=list(zip(summary["q1"], summary["q3"], summary["cards"], breach_labels)),
+        hovertemplate=(
+            "%{y}<br>Медиана: %{x:.1f} мин<br>25–75%: %{customdata[0]:.1f}–%{customdata[1]:.1f} мин"
+            "<br>Карточек: %{customdata[2]}<br>Позже норматива: %{customdata[3]}<extra></extra>"
+        ),
+    ))
+    fig.update_xaxes(title_text="Минуты до взятия в работу", rangemode="tozero")
+    fig.update_yaxes(autorange="reversed", type="category", categoryorder="array", categoryarray=CRIT_ORDER)
+    return _eda_layout(fig, "Как быстро берут карточки в работу?", summary.empty)
 
 
 # ---- Модель-советчик (3.6)

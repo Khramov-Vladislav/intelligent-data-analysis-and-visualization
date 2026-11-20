@@ -180,6 +180,7 @@ dmypy.json
 # Local course materials
 /materials/
 /task.md
+/module-2-overview.md
 
 # pytype static type analyzer
 .pytype/

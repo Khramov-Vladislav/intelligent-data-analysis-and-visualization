@@ -4,6 +4,7 @@ from taipy.gui import Markdown, State, notify
 
 import charts
 from data import CRIT_ORDER, filter_cards, kpis, load_cards, options, table_view
+from soc_eda import rule_noise, take_sla_by_load, take_time_by_criticality
 
 # Полный датасет живет на уровне процесса и не попадает в State: каждый клиент хранит только свой срез.
 _cards = load_cards()
@@ -33,6 +34,7 @@ only_open = False
 # ---- State: представление (пересчитывается в callbacks)
 kpi_total = kpi_fp = kpi_no_verdict = kpi_critical_open = kpi_median = ""
 fig_daily = fig_verdicts = fig_crit = fig_categories = fig_hours = None
+fig_rule_noise = fig_take_sla = fig_take_time = None
 cards_table = pd.DataFrame()
 period = ""
 
@@ -44,6 +46,10 @@ card_title = card_alert = card_meta = ""
 def _view(df: pd.DataFrame) -> dict:
     """Все производные от среза значения; одна функция для старта и для callbacks."""
     k = kpis(df)
+    rules, _ = rule_noise(df)
+    period = "Данных для выбранного среза нет · UTC" if df.empty else (
+        f"{df['Создан'].min():%d.%m.%Y} — {df['Создан'].max():%d.%m.%Y} · UTC"
+    )
     return {
         "kpi_total": fmt_int(k["total"]),
         "kpi_fp": f"{k['fp_share']:.1%}".replace(".", ","),
@@ -55,8 +61,11 @@ def _view(df: pd.DataFrame) -> dict:
         "fig_crit": charts.criticality_bars(df),
         "fig_categories": charts.category_bars(df),
         "fig_hours": charts.hourly_profile(df),
+        "fig_rule_noise": charts.rule_noise_fig(rules),
+        "fig_take_sla": charts.take_sla_fig(take_sla_by_load(df)),
+        "fig_take_time": charts.take_time_fig(take_time_by_criticality(df)),
         "cards_table": table_view(df),
-        "period": f"{df['Создан'].min():%d.%m.%Y} — {df['Создан'].max():%d.%m.%Y} · UTC",
+        "period": period,
     }
 
 
@@ -78,8 +87,7 @@ def on_filter(state: State, var_name: str = "", value=None):
         _cards, start, end, state.crit_sel, state.group_sel, state.category_sel, state.only_open
     )
     if df.empty:
-        notify(state, "warning", "Под выбранные фильтры не попала ни одна карточка — ослабьте условия.")
-        return
+        notify(state, "warning", "Под выбранные фильтры не попала ни одна карточка.")
     with state as s:  # одно обновление клиента вместо десятка
         for name, val in _view(df).items():
             setattr(s, name, val)
@@ -155,6 +163,10 @@ page = Markdown("""
 <|
 <|layout|columns=1 1 1 1 1|gap=12px|
 <|part|class_name=card|
+**Критические без вердикта**
+<|{kpi_critical_open}|text|class_name=kpi signal|>
+|>
+<|part|class_name=card|
 **Карточек**
 <|{kpi_total}|text|class_name=kpi|>
 |>
@@ -165,10 +177,6 @@ page = Markdown("""
 <|part|class_name=card|
 **Без вердикта**
 <|{kpi_no_verdict}|text|class_name=kpi|>
-|>
-<|part|class_name=card|
-**Критические без вердикта**
-<|{kpi_critical_open}|text|class_name=kpi signal|>
 |>
 <|part|class_name=card|
 **Медиана времени решения**
@@ -186,6 +194,25 @@ page = Markdown("""
 <|chart|figure={fig_categories}|>
 
 <|chart|figure={fig_hours}|>
+|>
+
+## Правила SIEM и время реакции
+
+<|chart|figure={fig_rule_noise}|>
+
+*Каждая точка — правило SIEM. Красным выделены правила с 300 и более карточками с содержательным вердиктом и долей ложных тревог от 95%.*
+
+<|layout|columns=1 1|gap=12px|
+<|part|
+<|chart|figure={fig_take_sla}|>
+
+*Нагрузка за час считается по всему потоку. Доля просрочек — по карточкам в выбранном срезе, для которых заполнен флаг SLA.*
+|>
+<|part|
+<|chart|figure={fig_take_time}|>
+
+*Точка — медиана, отрезок — центральные 50% наблюдений. В подсказке указана доля превышений индивидуального норматива.*
+|>
 |>
 
 ## Карточки
