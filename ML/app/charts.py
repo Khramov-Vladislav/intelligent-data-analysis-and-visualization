@@ -410,3 +410,74 @@ def cost_curve_fig(thresholds, costs, current: float, best: float, k: float, dig
     fig.update_xaxes(title="Порог τ", range=[0, 1])
     fig.update_yaxes(title="Стоимость, в ценах FP", showgrid=True, gridcolor="#F1F3F4", rangemode="tozero")
     return fig
+
+
+def missed_by_week_fig(weeks: pd.DataFrame) -> go.Figure:
+    fig = go.Figure()
+    for field, name, color in (("found", "Найдено", GREY), ("missed", "Пропущено", SIGNAL)):
+        values = weeks["incidents"] - weeks["missed"] if field == "found" else weeks[field]
+        fig.add_bar(
+            x=weeks.index, y=values, name=name, marker_color=color, customdata=weeks["incidents"],
+            hovertemplate="%{x|%d.%m.%Y} · %{y} из %{customdata}<extra>%{fullData.name}</extra>",
+        )
+    without_incidents = weeks.index[weeks["incidents"].eq(0)]
+    if len(without_incidents):
+        fig.add_scatter(
+            x=without_incidents, y=np.zeros(len(without_incidents)), mode="markers", showlegend=False,
+            marker=dict(symbol="circle-open", color=GREY, size=9),
+            hovertemplate="%{x|%d.%m.%Y}<br>Нет размеченных инцидентов<extra></extra>",
+        )
+    _layout(fig, "", height=300)
+    fig.update_layout(barmode="stack", showlegend=True, legend=dict(orientation="h", x=0, y=1.12),
+                      margin=dict(l=50, r=18, t=38, b=50))
+    # Plotly's automatic date grid can place the ticks on Sundays.
+    fig.update_xaxes(tickformat="%d.%m", tick0=weeks.index[0], dtick=7 * 86_400_000, automargin=True)
+    fig.update_yaxes(title="Инциденты", rangemode="tozero", showgrid=True, gridcolor="#F1F3F4")
+    return fig
+
+
+def missed_by_segment_fig(segments: pd.DataFrame) -> go.Figure:
+    counts = segments.sort_values(["missed", "incidents"], ascending=False).iloc[::-1]
+    summary = [f"{missed} из {total} · {rate:.1%}".replace(".", ",")
+               for missed, total, rate in counts[["missed", "incidents", "rate"]].itertuples(index=False)]
+    fig = go.Figure()
+    fig.add_bar(
+        x=counts["incidents"], y=counts.index, orientation="h", marker_color="#DADCE0",
+        text=summary, textposition="outside", cliponaxis=False, hoverinfo="skip",
+    )
+    fig.add_bar(
+        x=counts["missed"], y=counts.index, orientation="h", marker_color=SIGNAL, customdata=summary,
+        hovertemplate="%{y}<br>Пропущено %{customdata}<extra></extra>",
+    )
+    _layout(fig, "", height=max(250, 34 * len(counts) + 38))
+    fig.update_layout(barmode="overlay", margin=dict(l=10, r=132, t=10, b=10))
+    # Для длинных названий ось подбирает левый отступ, а справа оставляем место для подписей.
+    fig.update_xaxes(visible=False, range=[0, max(counts["incidents"].max(), 1)])
+    fig.update_yaxes(automargin=True)
+    return fig
+
+
+def inference_tradeoff_fig(
+    curve: pd.DataFrame, current: pd.Series, reference: pd.Series, total: int, positives: int,
+) -> go.Figure:
+    fig = go.Figure()
+    fig.add_scatter(
+        x=curve["flagged"] / total, y=curve["FN"] / positives, mode="lines",
+        line=dict(color=GREY, width=2), hoverinfo="skip", showlegend=False,
+    )
+    for row, name, color, symbol in (
+        (reference, "Порог лога", DARK, "circle-open"),
+        (current, "Выбранный порог", ACCENT, "diamond"),
+    ):
+        fig.add_scatter(
+            x=[row["flagged"] / total], y=[row["FN"] / positives], mode="markers", name=name,
+            marker=dict(color=color, size=16 if symbol == "circle-open" else 10, symbol=symbol),
+            hovertemplate="К разбору %{x:.1%}<br>Пропуски %{y:.1%}<extra>%{fullData.name}</extra>",
+        )
+    _layout(fig, "", height=290)
+    fig.update_layout(showlegend=True, legend=dict(orientation="h", x=0, y=1.13),
+                      margin=dict(l=65, r=24, t=38, b=55))
+    fig.update_xaxes(title="Доля прогнозов к разбору", range=[-0.025, 1.025], tickformat=".0%")
+    fig.update_yaxes(title="Доля пропущенных инцидентов", range=[-0.025, 1.025],
+                     tickformat=".0%", showgrid=True, gridcolor="#F1F3F4")
+    return fig

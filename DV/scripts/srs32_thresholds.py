@@ -1,28 +1,18 @@
 """СРС 3.2. Сравнение порогов на размеченной части учебного лога."""
 import argparse
+import sys
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "ML" / "app"))
+
+from inference_metrics import threshold_counts
+
 LOG = "MODEL_PREDICTIONS_target.parquet"
 COURSE_THRESHOLD = 0.18
 SCENARIOS = (50, 75, 100)
-
-
-def sweep(scores: pd.Series, labels: pd.Series) -> pd.DataFrame:
-    # При понижении порога все карточки с одинаковым score переходят вместе.
-    counts = labels.groupby(scores).agg(["sum", "size"]).sort_index(ascending=False)
-    tp = counts["sum"].cumsum()
-    fp = counts["size"].cumsum() - tp
-    rows = pd.DataFrame({"TP": tp, "FP": fp})
-    # Порог выше наибольшей оценки даёт режим без тревог.
-    no_alerts = pd.DataFrame({"TP": [0], "FP": [0]}, index=[np.nextafter(scores.max(), np.inf)])
-    rows = pd.concat([no_alerts, rows])
-    rows.index.name = "threshold"
-    rows["FN"] = int(labels.sum()) - rows["TP"]
-    rows["TN"] = int(labels.eq(0).sum()) - rows["FP"]
-    return rows
 
 
 def main() -> None:
@@ -40,7 +30,7 @@ def main() -> None:
     if valid["version"].nunique() != 1:
         raise ValueError("Для сравнения порогов нужен лог одной версии модели.")
 
-    curve = sweep(scores, y.astype(int))
+    curve = threshold_counts(scores, y)[["TP", "FP", "FN", "TN"]]
     course_pred = scores.ge(COURSE_THRESHOLD)
     if not course_pred.eq(valid["y_pred"]).all():
         raise ValueError("Решения при пороге курса расходятся с y_pred.")

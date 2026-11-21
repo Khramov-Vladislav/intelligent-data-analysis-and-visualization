@@ -9,7 +9,7 @@ configured_course()
 
 from taipy.gui import Gui
 
-from pages import advisor, overview
+from pages import advisor, inference, overview
 
 if advisor.course_mode:
     from pages import course_xai as xai
@@ -22,6 +22,7 @@ root = """
 nav = [
     ("/overview", "Обзор потока"),
     ("/advisor", "Модель-советчик"),
+    ("/inference", "Качество модели"),
     ("/xai", "Почему так?" if advisor.course_mode else "Объяснения (XAI)"),
 ]
 
@@ -29,6 +30,7 @@ pages = {
     "/": root,
     "overview": overview.page,
     "advisor": advisor.page,
+    "inference": inference.page,
     "xai": xai.page,
 }
 
