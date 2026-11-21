@@ -2,6 +2,11 @@
 
 Запуск: cd ML/app && poetry run python main.py  →  http://127.0.0.1:5050
 """
+from course_model import configured_course
+
+# В комплекте курса LightGBM и модель загружаются до pyarrow для совместимости с Windows.
+configured_course()
+
 from taipy.gui import Gui
 
 from pages import advisor, overview, xai

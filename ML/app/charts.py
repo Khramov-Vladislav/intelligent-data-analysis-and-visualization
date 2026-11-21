@@ -227,7 +227,7 @@ def pr_curve_fig(precision, recall, point_p: float, point_r: float) -> go.Figure
     return fig
 
 
-def score_histogram(scores, threshold: float) -> go.Figure:
+def score_histogram(scores, threshold: float, digits: int = 2) -> go.Figure:
     """Распределение модельных оценок в очереди; справа от порога — карточки «к разбору»."""
     fig = go.Figure()
     above = scores[scores >= threshold]
@@ -236,7 +236,7 @@ def score_histogram(scores, threshold: float) -> go.Figure:
     fig.add_histogram(x=below, xbins=bins, marker_color="#DADCE0", hovertemplate="%{y}<extra></extra>")
     fig.add_histogram(x=above, xbins=bins, marker_color=SIGNAL, hovertemplate="%{y}<extra></extra>")
     fig.add_vline(x=threshold, line=dict(color=DARK, width=1, dash="dot"),
-                  annotation_text=f"порог {threshold:.2f}", annotation_position="top")
+                  annotation_text=f"порог {threshold:.{digits}f}", annotation_position="top")
     _layout(fig, "Оценки модели по очереди без вердикта (красным — к разбору; шкала логарифмическая)", height=300)
     fig.update_layout(barmode="overlay", bargap=0.05)
     fig.update_xaxes(title="Модельная оценка «инцидент»", range=[0, 1])
@@ -359,21 +359,21 @@ def pdp_fig(feature: str, grid: list, pdp: np.ndarray, ice: np.ndarray, observed
     return fig
 
 
-def cost_curve_fig(thresholds, costs, current: float, best: float, k: float) -> go.Figure:
+def cost_curve_fig(thresholds, costs, current: float, best: float, k: float, digits: int = 2) -> go.Figure:
     """Суммарная стоимость ошибок FN·k + FP (в «ценах ложной тревоги») на отложенной выборке по порогам."""
     fig = go.Figure()
     fig.add_scatter(x=thresholds, y=costs, mode="lines", line=dict(color=GREY, width=2),
-                    hovertemplate="τ = %{x:.2f}: стоимость %{y:,.0f}<extra></extra>")
+                    hovertemplate=f"τ = %{{x:.{digits}f}}: стоимость %{{y:,.0f}}<extra></extra>")
     i_cur = int(np.argmin(np.abs(np.asarray(thresholds) - current)))
     i_best = int(np.argmin(costs))
-    same = abs(current - best) < 0.005
+    same = format(current, f".{digits}f") == format(best, f".{digits}f")
     fig.add_scatter(x=[thresholds[i_best]], y=[costs[i_best]], mode="markers+text",
                     marker=dict(color=SIGNAL, size=11),
-                    text=[f"τ* = {best:.2f}" + (" = текущий τ" if same else "")],
+                    text=[f"τ* = {best:.{digits}f}" + (" = текущий τ" if same else "")],
                     textposition="top right", hoverinfo="skip")
     if not same:
         fig.add_scatter(x=[thresholds[i_cur]], y=[costs[i_cur]], mode="markers+text",
-                        marker=dict(color=ACCENT, size=11), text=[f"текущий τ = {current:.2f}"],
+                        marker=dict(color=ACCENT, size=11), text=[f"текущий τ = {current:.{digits}f}"],
                         textposition="top center", hoverinfo="skip")
     _layout(fig, f"Стоимость ошибок FN·k + FP при k = {k:g} (минимум — τ*)", height=300)
     fig.update_xaxes(title="Порог τ", range=[0, 1])
