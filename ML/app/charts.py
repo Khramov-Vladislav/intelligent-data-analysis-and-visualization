@@ -7,6 +7,7 @@
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 
 from data import CRIT_ORDER, FP
 from soc_eda import HOUR_LOAD_LABELS, MIN_RULE_CARDS, MIN_RULE_FP_SHARE
@@ -227,7 +228,7 @@ def pr_curve_fig(precision, recall, point_p: float, point_r: float) -> go.Figure
     return fig
 
 
-def score_histogram(scores, threshold: float) -> go.Figure:
+def score_histogram(scores, threshold: float, digits: int = 2) -> go.Figure:
     """Распределение модельных оценок в очереди; справа от порога — карточки «к разбору»."""
     fig = go.Figure()
     above = scores[scores >= threshold]
@@ -236,7 +237,7 @@ def score_histogram(scores, threshold: float) -> go.Figure:
     fig.add_histogram(x=below, xbins=bins, marker_color="#DADCE0", hovertemplate="%{y}<extra></extra>")
     fig.add_histogram(x=above, xbins=bins, marker_color=SIGNAL, hovertemplate="%{y}<extra></extra>")
     fig.add_vline(x=threshold, line=dict(color=DARK, width=1, dash="dot"),
-                  annotation_text=f"порог {threshold:.2f}", annotation_position="top")
+                  annotation_text=f"порог {threshold:.{digits}f}", annotation_position="top")
     _layout(fig, "Оценки модели по очереди без вердикта (красным — к разбору; шкала логарифмическая)", height=300)
     fig.update_layout(barmode="overlay", bargap=0.05)
     fig.update_xaxes(title="Модельная оценка «инцидент»", range=[0, 1])
@@ -254,11 +255,13 @@ def _proba(logit: float) -> float:
     return 1 / (1 + np.exp(-logit))
 
 
-def shap_waterfall(contrib: pd.DataFrame, base: float, top: int = 10, title: str = "") -> go.Figure:
+def shap_waterfall(
+    contrib: pd.DataFrame, base: float, top: int = 10, title: str = "", logit_threshold: float | None = None,
+) -> go.Figure:
     """Waterfall локального объяснения: от средней оценки модели к оценке этой карточки.
     Красный — вклад в сторону «инцидент», синий — в сторону «ложное срабатывание»."""
     head, rest = contrib.iloc[:top], contrib.iloc[top:]
-    labels = [f"{_short(f'{f} = {v}')}" for f, v in zip(head["Признак"], head["Значение"])]
+    labels = [_short(f"{f} = {v}" if v else f) for f, v in zip(head["Признак"], head["Значение"])]
     values = head["Вклад"].tolist()
     if len(rest):
         labels.append(f"остальные {len(rest)} признаков")
@@ -285,6 +288,9 @@ def shap_waterfall(contrib: pd.DataFrame, base: float, top: int = 10, title: str
     fig.update_xaxes(title="Лог-шансы класса «инцидент»", showgrid=True, gridcolor="#F1F3F4", zeroline=True,
                      zerolinecolor="#DADCE0")
     fig.update_layout(margin=dict(l=10, r=40, t=50, b=10))
+    if logit_threshold is not None:
+        fig.add_vline(x=logit_threshold, line_dash="dot", line_color=DARK,
+                      annotation_text="Порог", annotation_position="top right")
     return fig
 
 
@@ -299,6 +305,37 @@ def shap_importance(values: np.ndarray, features, top: int = 15) -> go.Figure:
     _layout(fig, f"Важность признаков: средний |SHAP| по {len(values):,} карточкам".replace(",", " "),
             height=120 + 26 * len(imp))
     _hbar_room(fig, imp.values)
+    return fig
+
+
+def shap_top_bars(contributions: pd.DataFrame) -> go.Figure:
+    top = contributions.head(10).iloc[::-1]
+    values = top["Вклад"]
+    fig = go.Figure(go.Bar(
+        x=values, y=top["Признак"], orientation="h",
+        marker_color=np.where(values.gt(0), SIGNAL, ACCENT),
+        hovertemplate="%{y}<br>Вклад %{x:+.4f}<extra></extra>",
+    ))
+    _layout(fig, "Десять самых больших вкладов", height=350)
+    fig.update_xaxes(title="Вклад в логарифме шансов", zeroline=True, zerolinecolor="#DADCE0")
+    fig.update_yaxes(automargin=True)
+    fig.update_layout(margin=dict(l=10, r=20, t=50, b=50))
+    return fig
+
+
+def shap_importance_comparison(practice: pd.Series, test: pd.Series) -> go.Figure:
+    fields = practice.nlargest(5).index.union(test.nlargest(5).index, sort=False)[::-1]
+    fig = go.Figure()
+    for sample, values, color in (("Практика", practice, ACCENT), ("Тест", test, GREY)):
+        fig.add_bar(
+            x=values.reindex(fields), y=fields, name=sample, orientation="h", marker_color=color,
+            hovertemplate=f"{sample} · %{{y}}<br>Средний |SHAP| %{{x:.3f}}<extra></extra>",
+        )
+    _layout(fig, "Топ-5 признаков на практике и тесте", height=350)
+    fig.update_layout(barmode="group", showlegend=True, legend=dict(orientation="h", y=1.07, x=1, xanchor="right"),
+                      margin=dict(l=10, r=30, t=66, b=50))
+    fig.update_xaxes(title="Средний модуль вклада SHAP")
+    fig.update_yaxes(automargin=True)
     return fig
 
 
@@ -359,23 +396,140 @@ def pdp_fig(feature: str, grid: list, pdp: np.ndarray, ice: np.ndarray, observed
     return fig
 
 
-def cost_curve_fig(thresholds, costs, current: float, best: float, k: float) -> go.Figure:
+def cost_curve_fig(thresholds, costs, current: float, best: float, k: float, digits: int = 2) -> go.Figure:
     """Суммарная стоимость ошибок FN·k + FP (в «ценах ложной тревоги») на отложенной выборке по порогам."""
     fig = go.Figure()
     fig.add_scatter(x=thresholds, y=costs, mode="lines", line=dict(color=GREY, width=2),
-                    hovertemplate="τ = %{x:.2f}: стоимость %{y:,.0f}<extra></extra>")
+                    hovertemplate=f"τ = %{{x:.{digits}f}}: стоимость %{{y:,.0f}}<extra></extra>")
     i_cur = int(np.argmin(np.abs(np.asarray(thresholds) - current)))
     i_best = int(np.argmin(costs))
-    same = abs(current - best) < 0.005
+    same = format(current, f".{digits}f") == format(best, f".{digits}f")
     fig.add_scatter(x=[thresholds[i_best]], y=[costs[i_best]], mode="markers+text",
                     marker=dict(color=SIGNAL, size=11),
-                    text=[f"τ* = {best:.2f}" + (" = текущий τ" if same else "")],
+                    text=[f"τ* = {best:.{digits}f}" + (" = текущий τ" if same else "")],
                     textposition="top right", hoverinfo="skip")
     if not same:
         fig.add_scatter(x=[thresholds[i_cur]], y=[costs[i_cur]], mode="markers+text",
-                        marker=dict(color=ACCENT, size=11), text=[f"текущий τ = {current:.2f}"],
+                        marker=dict(color=ACCENT, size=11), text=[f"текущий τ = {current:.{digits}f}"],
                         textposition="top center", hoverinfo="skip")
     _layout(fig, f"Стоимость ошибок FN·k + FP при k = {k:g} (минимум — τ*)", height=300)
     fig.update_xaxes(title="Порог τ", range=[0, 1])
     fig.update_yaxes(title="Стоимость, в ценах FP", showgrid=True, gridcolor="#F1F3F4", rangemode="tozero")
+    return fig
+
+
+def missed_by_week_fig(weeks: pd.DataFrame) -> go.Figure:
+    fig = go.Figure()
+    for field, name, color in (("found", "Найдено", GREY), ("missed", "Пропущено", SIGNAL)):
+        values = weeks["incidents"] - weeks["missed"] if field == "found" else weeks[field]
+        fig.add_bar(
+            x=weeks.index, y=values, name=name, marker_color=color, customdata=weeks["incidents"],
+            hovertemplate="%{x|%d.%m.%Y} · %{y} из %{customdata}<extra>%{fullData.name}</extra>",
+        )
+    without_incidents = weeks.index[weeks["incidents"].eq(0)]
+    if len(without_incidents):
+        fig.add_scatter(
+            x=without_incidents, y=np.zeros(len(without_incidents)), mode="markers", showlegend=False,
+            marker=dict(symbol="circle-open", color=GREY, size=9),
+            hovertemplate="%{x|%d.%m.%Y}<br>Нет размеченных инцидентов<extra></extra>",
+        )
+    _layout(fig, "", height=300)
+    fig.update_layout(barmode="stack", showlegend=True, legend=dict(orientation="h", x=0, y=1.12),
+                      margin=dict(l=50, r=18, t=38, b=50))
+    # Plotly's automatic date grid can place the ticks on Sundays.
+    fig.update_xaxes(tickformat="%d.%m", tick0=weeks.index[0], dtick=7 * 86_400_000, automargin=True)
+    fig.update_yaxes(title="Инциденты", rangemode="tozero", showgrid=True, gridcolor="#F1F3F4")
+    return fig
+
+
+def missed_by_segment_fig(segments: pd.DataFrame) -> go.Figure:
+    counts = segments.sort_values(["missed", "incidents"], ascending=False).iloc[::-1]
+    summary = [f"{missed} из {total} · {rate:.1%}".replace(".", ",")
+               for missed, total, rate in counts[["missed", "incidents", "rate"]].itertuples(index=False)]
+    fig = go.Figure()
+    fig.add_bar(
+        x=counts["incidents"], y=counts.index, orientation="h", marker_color="#DADCE0",
+        text=summary, textposition="outside", cliponaxis=False, hoverinfo="skip",
+    )
+    fig.add_bar(
+        x=counts["missed"], y=counts.index, orientation="h", marker_color=SIGNAL, customdata=summary,
+        hovertemplate="%{y}<br>Пропущено %{customdata}<extra></extra>",
+    )
+    _layout(fig, "", height=max(250, 34 * len(counts) + 38))
+    fig.update_layout(barmode="overlay", margin=dict(l=10, r=132, t=10, b=10))
+    # Для длинных названий ось подбирает левый отступ, а справа оставляем место для подписей.
+    fig.update_xaxes(visible=False, range=[0, max(counts["incidents"].max(), 1)])
+    fig.update_yaxes(automargin=True)
+    return fig
+
+
+def inference_tradeoff_fig(
+    curve: pd.DataFrame, current: pd.Series, reference: pd.Series, total: int, positives: int,
+) -> go.Figure:
+    fig = go.Figure()
+    fig.add_scatter(
+        x=curve["flagged"] / total, y=curve["FN"] / positives, mode="lines",
+        line=dict(color=GREY, width=2), hoverinfo="skip", showlegend=False,
+    )
+    for row, name, color, symbol in (
+        (reference, "Порог лога", DARK, "circle-open"),
+        (current, "Выбранный порог", ACCENT, "diamond"),
+    ):
+        fig.add_scatter(
+            x=[row["flagged"] / total], y=[row["FN"] / positives], mode="markers", name=name,
+            marker=dict(color=color, size=16 if symbol == "circle-open" else 10, symbol=symbol),
+            hovertemplate="К разбору %{x:.1%}<br>Пропуски %{y:.1%}<extra>%{fullData.name}</extra>",
+        )
+    _layout(fig, "", height=290)
+    fig.update_layout(showlegend=True, legend=dict(orientation="h", x=0, y=1.13),
+                      margin=dict(l=65, r=24, t=38, b=55))
+    fig.update_xaxes(title="Доля прогнозов к разбору", range=[-0.025, 1.025], tickformat=".0%")
+    fig.update_yaxes(title="Доля пропущенных инцидентов", range=[-0.025, 1.025],
+                     tickformat=".0%", showgrid=True, gridcolor="#F1F3F4")
+    return fig
+
+
+def shap_evidence_fig(evidence: pd.DataFrame) -> go.Figure:
+    fig = make_subplots(rows=1, cols=2, shared_yaxes=True, horizontal_spacing=0.12)
+    rows = evidence.iloc[::-1]
+    contributions = rows["contribution"]
+    counts = rows["count"]
+    fig.add_bar(
+        col=1, row=1, x=contributions, y=rows.index, orientation="h",
+        marker_color=np.where(contributions.gt(0), SIGNAL, ACCENT),
+        text=[f"{v:+.2f}".replace(".", ",") for v in contributions],
+        textposition="outside", cliponaxis=False, customdata=counts,
+        hovertemplate="%{y}<br>Средний вклад %{x:+.2f}<br>Размечено %{customdata}<extra></extra>",
+    )
+    fig.add_bar(
+        col=2, row=1, x=rows["incident_rate"], y=rows.index, orientation="h", marker_color=GREY,
+        text=[f"{v:.1%}".replace(".", ",") for v in rows["incident_rate"]],
+        textposition="outside", cliponaxis=False, customdata=counts,
+        hovertemplate="%{y}<br>Инцидентов %{x:.1%}<br>Размечено %{customdata}<extra></extra>",
+    )
+    _layout(fig, "", height=210)
+    fig.update_layout(margin=dict(l=10, r=28, t=6, b=52))
+    low, high = min(0, contributions.min()), max(0, contributions.max())
+    padding = max(0.1, (high - low) * 0.24)
+    fig.update_xaxes(title="Средний вклад, лог-шансы", range=[low - padding, high + padding],
+                     zeroline=True, zerolinecolor="#DADCE0", col=1, row=1)
+    fig.update_xaxes(title="Доля инцидентов", tickformat=".0%", range=[0, 1.08], col=2, row=1)
+    fig.update_yaxes(automargin=True)
+    return fig
+
+
+def shap_outcome_fig(means: pd.DataFrame) -> go.Figure:
+    fig = go.Figure()
+    for outcome, label, color in (("FN", "Пропущенные", SIGNAL), ("TP", "Найденные", GREY)):
+        if outcome in means:
+            fig.add_bar(
+                x=means[outcome].iloc[::-1], y=means.index.map(_short)[::-1], orientation="h",
+                marker_color=color, name=label, customdata=means.index[::-1],
+                hovertemplate="%{customdata}<br>Средний вклад %{x:+.2f}<extra>%{fullData.name}</extra>",
+            )
+    _layout(fig, "", height=max(245, len(means) * 32 + 70))
+    fig.update_layout(barmode="group", showlegend=True, legend=dict(orientation="h", x=0, y=1.13),
+                      margin=dict(l=10, r=24, t=36, b=50))
+    fig.update_xaxes(title="Средний вклад, лог-шансы", zeroline=True, zerolinecolor="#DADCE0")
+    fig.update_yaxes(automargin=True)
     return fig

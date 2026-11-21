@@ -13,34 +13,64 @@ from taipy.gui import Markdown, State, get_state_id, invoke_long_callback, notif
 
 import charts
 from advisor import TEST_IDS, build_features, labels, load_model, load_raw, model_path, predict_scores
+from course_model import COURSE_VERSION, configured_course, load_course_cards
 from data import NO_VERDICT
 from explain import card_explanation
 
 CHUNK = 5_000
 QUEUE, HOLDOUT = "очередь", "отложенная выборка"
 
-# ---- Инициализация модели (один раз на процесс)
-try:
-    _model, _meta = load_model()
-    model_ready = True
-    model_status = f"Загружена: {_meta['name']} · {model_path().name}"
-except Exception as e:  # приложение должно работать и без модели: обзор от нее не зависит
-    _model, _meta = None, {"threshold": 0.5}
-    model_ready = False
-    model_status = f"Модель не загружена ({model_path()}): {e}"
+_course_kit, _course_model, _course_error = configured_course()
+course_mode = _course_kit is not None
+threshold_digits = 6 if course_mode else 2
 
 
 def _jobs() -> pd.DataFrame:
     """Что скорим: очередь без вердикта (для разбора) и отложенную выборку с фактом (для метрик)."""
+    if course_mode:
+        raw = load_course_cards(_course_model)
+        dataset = _course_model.cfg["dataset"]
+        verdict = raw[dataset["target"]["column"]]
+        created = pd.to_datetime(raw["Создан"], format="ISO8601", utc=True)
+        last_training_day = pd.Timestamp(dataset["window"]["to"], tz="UTC")
+        queue_mask = verdict.isna() | verdict.eq(NO_VERDICT)
+        held_mask = created.dt.normalize().gt(last_training_day) & verdict.isin(
+            dataset["filters"]["verdict_in"]
+        )
+        queue = raw.loc[queue_mask].assign(Набор=QUEUE, y=np.nan)
+        held = raw.loc[held_mask].assign(Набор=HOLDOUT)
+        held["y"] = verdict.loc[held_mask].eq(dataset["target"]["positive"]).astype(int)
+        if held["y"].nunique() != 2:
+            raise ValueError("Для оценки модели нужны оба класса после окна обучения.")
+        return pd.concat([queue, held], ignore_index=True)
+
     raw = load_raw()
     queue = raw[raw["Вердикт"] == NO_VERDICT].assign(Набор=QUEUE)
-    # Для модели курса без списка отложенных карточек берем все размеченные (метрики будут оптимистичнее).
     labeled = raw[labels(raw).notna()]
     held = labeled[labeled["EntityId"].isin(np.load(TEST_IDS))] if TEST_IDS.exists() else labeled
-    return pd.concat([queue, held.assign(Набор=HOLDOUT)], ignore_index=True)
+    jobs = pd.concat([queue, held.assign(Набор=HOLDOUT)], ignore_index=True)
+    jobs["y"] = labels(jobs)
+    return jobs
 
 
-_job_frame = _jobs() if model_ready else pd.DataFrame()
+# ---- Инициализация модели (один раз на процесс)
+try:
+    if course_mode:
+        if _course_error is not None:
+            raise _course_error
+        _model, _meta = _course_model, {"threshold": _course_model.threshold, "name": COURSE_VERSION}
+    else:
+        _model, _meta = load_model()
+    _job_frame = _jobs()
+    model_ready = True
+    model_status = f"Загружена: {_meta['name']}"
+except Exception as error:  # обзор по данным может работать без модели
+    _model, _meta, _job_frame = None, {"threshold": 0.5}, pd.DataFrame()
+    model_ready = False
+    source = _course_kit if course_mode else model_path()
+    model_status = f"Модель не загружена ({source}): {error}"
+
+baseline_xai_ready = model_ready and not course_mode
 _progress: dict[str, float] = {}  # state_id → доля выполненного; пишет поток инференса, читает статус-callback
 
 
@@ -52,12 +82,22 @@ def fmt_int(n: int) -> str:
     return f"{n:,}".replace(",", " ")
 
 
+def fmt_threshold(value: float) -> str:
+    return f"{value:.{threshold_digits}f}".replace(".", ",")
+
+
 m = _meta.get("metrics_test", {})
 model_card = (
     f"Порог по умолчанию: **{_meta['threshold']:.2f}** (полнота ≥ {_meta.get('min_recall', 0):.0%})  \n"
     f"Отложенная выборка: ROC-AUC {m.get('roc_auc', 0):.2f}, AP {m.get('average_precision', 0):.2f}  \n"
     f"scikit-learn при обучении: {_meta.get('sklearn', '—')}"
 )
+if course_mode:
+    model_card = (
+        f"Порог курса – **{fmt_threshold(_meta['threshold'])}**.  \n"
+        "Метрики пересчитываются по карточкам после окна обучения (с сентября 2025)."
+        if model_ready else ""
+    )
 tc = _meta.get("temporal_check")
 drift_note = (
     f"Проверка по времени (карточки с {pd.Timestamp(tc['test_from']):%d.%m.%Y}): ROC-AUC {tc['roc_auc']:.2f} — "
@@ -71,11 +111,17 @@ progress = 0
 run_info = "Инференс еще не запускался."
 has_result = False
 threshold = float(_meta["threshold"])
+threshold_min = 0.0 if course_mode else 0.01
+threshold_max = 1.0 if course_mode else 0.99
+threshold_step = 0.0001 if course_mode else 0.01
+threshold_text = fmt_threshold(threshold)
 k_cost = 50.0  # во сколько раз пропуск (FN) дороже ложной тревоги (FP); «Меню кейсов», ИБ: 50–100
 tau_opt = threshold
 k_cost_now = k_tau_opt = ""
 fig_cost = None
 COST_GRID = np.round(np.arange(0.01, 0.99, 0.01), 2)
+if course_mode:
+    COST_GRID = np.unique(np.r_[0, np.geomspace(1e-6, 0.1, 101), COST_GRID, threshold, 1])
 k_queue = k_flagged = k_load = k_precision = k_recall = k_missed = ""
 fig_cm = fig_pr = fig_hist = None
 QUEUE_COLUMNS = ["EntityId", "Создан", "Критичность", "Пиктограмма IRP", "Наименование", "Оценка"]
@@ -90,14 +136,15 @@ def _run_inference(state_id: str) -> pd.DataFrame:
     """Выполняется в отдельном потоке: State здесь недоступен, прогресс пишем в общий словарь."""
     started = time.perf_counter()
     scores = np.empty(len(_job_frame))
-    parts = np.array_split(np.arange(len(_job_frame)), max(len(_job_frame) // CHUNK, 1))
-    for i, idx in enumerate(parts):
-        X = build_features(_job_frame.iloc[idx])
-        scores[idx] = predict_scores(_model, X)
-        _progress[state_id] = (i + 1) / len(parts)
-    out = _job_frame[["EntityId", "Создан", "Критичность", "Пиктограмма IRP", "Наименование", "Набор"]].copy()
+    for start in range(0, len(_job_frame), CHUNK):
+        stop = min(start + CHUNK, len(_job_frame))
+        batch = _job_frame.iloc[start:stop]
+        scores[start:stop] = (
+            _model.predict_proba(batch) if course_mode else predict_scores(_model, build_features(batch))
+        )
+        _progress[state_id] = stop / len(_job_frame)
+    out = _job_frame[["EntityId", "Создан", "Критичность", "Пиктограмма IRP", "Наименование", "Набор", "y"]].copy()
     out["Оценка"] = scores
-    out["y"] = labels(_job_frame).to_numpy()
     out.attrs["seconds"] = time.perf_counter() - started
     return out
 
@@ -116,13 +163,14 @@ def _apply_threshold(state: State):
     flagged = int((queue["Оценка"] >= t).sum())
     curve_p, curve_r, _ = precision_recall_curve(y, p)
     k = max(float(state.k_cost), 1.0)
-    costs = np.array([k * ((p < g) & (y == 1)).sum() + ((p >= g) & (y == 0)).sum() for g in COST_GRID])
-    best = float(COST_GRID[int(np.argmin(costs))])
+    grid = np.unique(np.r_[COST_GRID, t]) if course_mode else COST_GRID
+    costs = np.array([k * ((p < g) & (y == 1)).sum() + ((p >= g) & (y == 0)).sum() for g in grid])
+    best = float(grid[int(np.argmin(costs))])
 
     view = queue.sort_values("Оценка", ascending=False).head(500).copy()
-    view["Оценка"] = view["Оценка"].round(3)
+    view["Оценка"] = view["Оценка"].round(6 if course_mode else 3)
     view["Критичность"] = view["Критичность"].astype(str)
-    view["Создан"] = pd.to_datetime(view["Создан"]).dt.strftime("%d.%m.%Y %H:%M")  # UTC
+    view["Создан"] = pd.to_datetime(view["Создан"], format="ISO8601", utc=True).dt.strftime("%d.%m.%Y %H:%M")
 
     with state as s:
         s.k_queue = fmt_int(len(queue))
@@ -133,11 +181,12 @@ def _apply_threshold(state: State):
         s.k_missed = fmt_int(fn)
         s.fig_cm = charts.confusion_matrix_fig(tp, fn, fp, tn)
         s.fig_pr = charts.pr_curve_fig(curve_p, curve_r, precision, recall)
-        s.fig_hist = charts.score_histogram(queue["Оценка"].to_numpy(), t)
+        s.fig_hist = charts.score_histogram(queue["Оценка"].to_numpy(), t, threshold_digits)
         s.tau_opt = best
+        s.threshold_text = fmt_threshold(t)
         s.k_cost_now = fmt_int(round(k * fn + fp))
-        s.k_tau_opt = f"{best:.2f}".replace(".", ",")
-        s.fig_cost = charts.cost_curve_fig(COST_GRID, costs, t, best, k)
+        s.k_tau_opt = fmt_threshold(best)
+        s.fig_cost = charts.cost_curve_fig(grid, costs, t, best, k, threshold_digits)
         s.queue_table = view[QUEUE_COLUMNS]
 
 
@@ -178,6 +227,8 @@ def on_status(state: State, status, result=None):
 
 def on_queue_row(state: State, var_name: str, payload: dict):
     """Клик по строке очереди: SHAP-объяснение оценки этой карточки (3 мс, синхронно)."""
+    if not baseline_xai_ready:
+        return
     entity_id = int(state.queue_table.loc[payload["index"], "EntityId"])
     fig, info = card_explanation(_model, entity_id, state.threshold)
     with state as s:
@@ -227,9 +278,9 @@ page = Markdown("""
 <|part|render={has_result}|
 ### Порог решения
 
-<|{threshold}|slider|min=0.01|max=0.99|step=0.01|on_change=on_threshold|continuous=False|>
+<|{threshold}|slider|min={threshold_min}|max={threshold_max}|step={threshold_step}|on_change=on_threshold|continuous=False|>
 
-Текущий порог τ = <|{threshold}|text|format=%.2f|>
+Текущий порог τ = <|{threshold_text}|text|>
 
 <|По умолчанию|button|on_action=on_reset_threshold|>
 
@@ -296,7 +347,9 @@ page = Markdown("""
 
 ## Очередь по убыванию оценки (топ-500)
 
+<|part|render={baseline_xai_ready}|
 *Клик по строке — объяснение оценки (SHAP) ниже таблицы.*
+|>
 
 <|{queue_table}|table|page_size=15|width=100%|on_action=on_queue_row|>
 

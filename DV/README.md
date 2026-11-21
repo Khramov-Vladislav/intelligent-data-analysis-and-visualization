@@ -1,4 +1,4 @@
-# Самостоятельные работы и практика 1.5 (трек ML-инжиниринг)
+# Самостоятельные и практические работы (трек ML-инжиниринг)
 
 Команда: Храмов Владислав, Гарбуз Александр, Семенов Илья. Группа: 5130201/40101 (константа `GROUP` в `build_docs.py`).
 
@@ -11,12 +11,24 @@
 | СРС 2.3 · Траектория взгляда | Опорный конспект 2.3 и презентация, слайд 43 | [Текст](src/srs_2.3_gaze_pattern.md) | [PDF](pdf/srs_2.3_gaze_pattern.pdf) |
 | СРС 2.4 · EDA-гипотезы | Опорный конспект 2.4, раздел 8 | [Текст](src/srs_2.4_eda_hypotheses.md) | [PDF](pdf/srs_2.4_eda_hypotheses.pdf) |
 | СРС 3.1 · Метрики проекта и Fβ | Опорный конспект 3.1, раздел 8 | [Текст](src/srs_3.1_metrics.md) | [PDF](pdf/srs_3.1_metrics.pdf) |
+| СРС 3.2 · Матрица стоимости ошибок | Опорный конспект 3.2, раздел 9 | [Текст](src/srs_3.2_cost_matrix.md) | [PDF](pdf/srs_3.2_cost_matrix.pdf) |
+| СРС 3.3 · Глобальные объяснения | Опорный конспект 3.3, раздел 10 | [Текст](src/srs_3.3_global_xai.md) | [PDF](pdf/srs_3.3_global_xai.pdf) |
+| СРС 3.4 · Локальные объяснения SHAP | Опорный конспект 3.4, раздел 14 | [Текст](src/srs_3.4_local_shap.md) | [PDF](pdf/srs_3.4_local_shap.pdf) |
+| Практика 3.7 · «Почему так?» | Методические рекомендации 3.7, разделы 2–4 | [Записка](src/pr_3.7_why.md) | [PDF](pdf/pr_3.7_why.pdf) |
 
 Текст редактируем в `src/*.md`, изображения лежат в `img/`. Для PDF нужны Typst 0.15 или новее, шрифты CM-Super и локальный пакет `@local/poly-report:0.1.0`. Пакет и шрифты можно установить через `make install-package install-fonts` в каталоге `poly-report`. Команды ниже запускаются из корня репозитория. Готовые PDF лежат в `pdf/`, исходники Typst – в `typst/`. Pandoc нужен для обновления файлов Typst после правки текста.
 
 ```bash
 sh DV/build_typst.sh
 typst compile --root . DV/typst/srs_2.4_eda_hypotheses.typ DV/pdf/srs_2.4_eda_hypotheses.pdf
+```
+
+Графики и контрольные числа для СРС 3.3 воспроизводятся в окружении с pandas и Matplotlib. Нужен распакованный комплект ML 3.7.
+
+```bash
+python DV/scripts/srs33_global_xai.py \
+  materials/3.3*/3.3_XAI_данные.zip \
+  materials/3.7*/IAVD_3.7_ML_team/course_pack/shap_cards.csv
 ```
 
 Ранее подготовленные DOCX можно пересобрать отдельно.

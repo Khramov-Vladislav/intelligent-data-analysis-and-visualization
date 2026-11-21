@@ -6,10 +6,10 @@ from taipy.gui import Markdown, State, invoke_long_callback, notify
 import charts
 from advisor import NUMERIC, SHAP_SAMPLE, build_features, load_raw, partial_dependence, pdp_grid
 from explain import card_explanation
-from pages.advisor import _meta, _model, model_ready
+from pages.advisor import _meta, _model, baseline_xai_ready
 
 _tau = float(_meta["threshold"])
-shap_ready = model_ready and SHAP_SAMPLE.exists()
+shap_ready = baseline_xai_ready and SHAP_SAMPLE.exists()
 shap_status = (
     "Глобальные графики построены по предрасчитанным SHAP-значениям отложенной выборки."
     if shap_ready else f"Нет файла {SHAP_SAMPLE.name} — запустите model/train_baseline.py."
@@ -113,6 +113,7 @@ page = Markdown("""
 
 <|{shap_status}|text|class_name=subtitle|>
 
+<|part|render={baseline_xai_ready}|
 <|layout|columns=1 1|gap=16px|
 <|chart|figure={fig_importance}|>
 
@@ -165,6 +166,7 @@ PDP показывает, как в среднем меняется оценка
 *Как читать: ось — лог-шансы класса «инцидент». Модель начинает со средней оценки по обучающей выборке; красные полосы
 сдвигают оценку к «инциденту», синие — к «ложному срабатыванию»; итог переводится в оценку карточки (сигмоида).
 Вклад признака зависит от остальных значений карточки — это объяснение модели, а не причинность.*
+|>
 |>
 |>
 """)

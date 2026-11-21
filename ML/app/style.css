@@ -49,3 +49,72 @@
 .filters {
   overflow-wrap: anywhere;
 }
+
+.inference-controls > .md-para {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+.inference-controls br {
+  display: none;
+}
+
+.inference-kpis, .inference-panels {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.inference-kpis {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+}
+
+.inference-panels {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 460px), 1fr));
+  align-items: start;
+}
+
+.inference-chart, .inference-comparison {
+  min-width: 0;
+  padding: 12px 16px;
+}
+
+.inference-chart h2, .inference-comparison h2 {
+  margin: 0 0 8px;
+  font-size: 1.25rem;
+}
+
+.inference-chart p, .inference-comparison p {
+  margin: 0 0 8px;
+}
+
+.inference-table {
+  overflow-x: auto;
+}
+
+.inference-table table {
+  min-width: 520px;
+}
+
+.flow-section {
+  margin-bottom: 12px;
+}
+
+.flow-card-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+  gap: 12px;
+}
+
+.flow-card-grid > * {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 800px) {
+  .flow-card-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
