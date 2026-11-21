@@ -7,6 +7,7 @@
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 
 from data import CRIT_ORDER, FP
 from soc_eda import HOUR_LOAD_LABELS, MIN_RULE_CARDS, MIN_RULE_FP_SHARE
@@ -254,11 +255,13 @@ def _proba(logit: float) -> float:
     return 1 / (1 + np.exp(-logit))
 
 
-def shap_waterfall(contrib: pd.DataFrame, base: float, top: int = 10, title: str = "") -> go.Figure:
+def shap_waterfall(
+    contrib: pd.DataFrame, base: float, top: int = 10, title: str = "", logit_threshold: float | None = None,
+) -> go.Figure:
     """Waterfall локального объяснения: от средней оценки модели к оценке этой карточки.
     Красный — вклад в сторону «инцидент», синий — в сторону «ложное срабатывание»."""
     head, rest = contrib.iloc[:top], contrib.iloc[top:]
-    labels = [f"{_short(f'{f} = {v}')}" for f, v in zip(head["Признак"], head["Значение"])]
+    labels = [_short(f"{f} = {v}" if v else f) for f, v in zip(head["Признак"], head["Значение"])]
     values = head["Вклад"].tolist()
     if len(rest):
         labels.append(f"остальные {len(rest)} признаков")
@@ -285,6 +288,9 @@ def shap_waterfall(contrib: pd.DataFrame, base: float, top: int = 10, title: str
     fig.update_xaxes(title="Лог-шансы класса «инцидент»", showgrid=True, gridcolor="#F1F3F4", zeroline=True,
                      zerolinecolor="#DADCE0")
     fig.update_layout(margin=dict(l=10, r=40, t=50, b=10))
+    if logit_threshold is not None:
+        fig.add_vline(x=logit_threshold, line_dash="dot", line_color=DARK,
+                      annotation_text="Порог", annotation_position="top right")
     return fig
 
 
@@ -480,4 +486,50 @@ def inference_tradeoff_fig(
     fig.update_xaxes(title="Доля прогнозов к разбору", range=[-0.025, 1.025], tickformat=".0%")
     fig.update_yaxes(title="Доля пропущенных инцидентов", range=[-0.025, 1.025],
                      tickformat=".0%", showgrid=True, gridcolor="#F1F3F4")
+    return fig
+
+
+def shap_evidence_fig(evidence: pd.DataFrame) -> go.Figure:
+    fig = make_subplots(rows=1, cols=2, shared_yaxes=True, horizontal_spacing=0.12)
+    rows = evidence.iloc[::-1]
+    contributions = rows["contribution"]
+    counts = rows["count"]
+    fig.add_bar(
+        col=1, row=1, x=contributions, y=rows.index, orientation="h",
+        marker_color=np.where(contributions.gt(0), SIGNAL, ACCENT),
+        text=[f"{v:+.2f}".replace(".", ",") for v in contributions],
+        textposition="outside", cliponaxis=False, customdata=counts,
+        hovertemplate="%{y}<br>Средний вклад %{x:+.2f}<br>Размечено %{customdata}<extra></extra>",
+    )
+    fig.add_bar(
+        col=2, row=1, x=rows["incident_rate"], y=rows.index, orientation="h", marker_color=GREY,
+        text=[f"{v:.1%}".replace(".", ",") for v in rows["incident_rate"]],
+        textposition="outside", cliponaxis=False, customdata=counts,
+        hovertemplate="%{y}<br>Инцидентов %{x:.1%}<br>Размечено %{customdata}<extra></extra>",
+    )
+    _layout(fig, "", height=210)
+    fig.update_layout(margin=dict(l=10, r=28, t=6, b=52))
+    low, high = min(0, contributions.min()), max(0, contributions.max())
+    padding = max(0.1, (high - low) * 0.24)
+    fig.update_xaxes(title="Средний вклад, лог-шансы", range=[low - padding, high + padding],
+                     zeroline=True, zerolinecolor="#DADCE0", col=1, row=1)
+    fig.update_xaxes(title="Доля инцидентов", tickformat=".0%", range=[0, 1.08], col=2, row=1)
+    fig.update_yaxes(automargin=True)
+    return fig
+
+
+def shap_outcome_fig(means: pd.DataFrame) -> go.Figure:
+    fig = go.Figure()
+    for outcome, label, color in (("FN", "Пропущенные", SIGNAL), ("TP", "Найденные", GREY)):
+        if outcome in means:
+            fig.add_bar(
+                x=means[outcome].iloc[::-1], y=means.index.map(_short)[::-1], orientation="h",
+                marker_color=color, name=label, customdata=means.index[::-1],
+                hovertemplate="%{customdata}<br>Средний вклад %{x:+.2f}<extra>%{fullData.name}</extra>",
+            )
+    _layout(fig, "", height=max(245, len(means) * 32 + 70))
+    fig.update_layout(barmode="group", showlegend=True, legend=dict(orientation="h", x=0, y=1.13),
+                      margin=dict(l=10, r=24, t=36, b=50))
+    fig.update_xaxes(title="Средний вклад, лог-шансы", zeroline=True, zerolinecolor="#DADCE0")
+    fig.update_yaxes(automargin=True)
     return fig

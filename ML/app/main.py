@@ -9,7 +9,7 @@ configured_course()
 
 from taipy.gui import Gui
 
-from pages import advisor, inference, overview
+from pages import advisor, inference, overview, shap_flow
 
 if advisor.course_mode:
     from pages import course_xai as xai
@@ -24,6 +24,7 @@ nav = [
     ("/advisor", "Модель-советчик"),
     ("/inference", "Качество модели"),
     ("/xai", "Почему так?" if advisor.course_mode else "Объяснения (XAI)"),
+    ("/shap-flow", "Объяснения на потоке"),
 ]
 
 pages = {
@@ -32,6 +33,7 @@ pages = {
     "advisor": advisor.page,
     "inference": inference.page,
     "xai": xai.page,
+    "shap-flow": shap_flow.page,
 }
 
 if __name__ == "__main__":

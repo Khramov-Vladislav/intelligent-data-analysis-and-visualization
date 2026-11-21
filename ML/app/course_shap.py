@@ -12,7 +12,12 @@ from course_model import COURSE_VERSION
 TOLERANCE = 1e-6
 TEAM_COLUMNS = ["EntityId", "Вердикт", "Оценка", "Исход"]
 CONTRIB_COLUMNS = ["Признак", "Источник", "Значение", "Вклад"]
-TEST_IMPORTANCE = "IAVD_3.7_BI_team/data/5/Parquet/Gen/fact_importance.parquet"
+BI_TABLES = "IAVD_3.7_BI_team/data/5/Parquet/Gen"
+
+
+def read_bi_table(bundle: ZipFile, name: str, columns=None) -> pd.DataFrame:
+    with BytesIO(bundle.read(f"{BI_TABLES}/{name}.parquet")) as source:
+        return pd.read_parquet(source, columns=columns)
 
 
 def read_cards_csv(path: Path) -> pd.DataFrame:
@@ -25,7 +30,7 @@ def test_importance(kit: Path) -> pd.Series:
     if not archive.is_file():
         return pd.Series(dtype=float)
     with ZipFile(archive) as bundle:
-        table = pd.read_parquet(BytesIO(bundle.read(TEST_IMPORTANCE)))
+        table = read_bi_table(bundle, "fact_importance")
     test = table.loc[table["sample"].eq("test") & table["model"].eq(COURSE_VERSION)]
     return test.set_index("source_column")["mean_abs_shap"]
 

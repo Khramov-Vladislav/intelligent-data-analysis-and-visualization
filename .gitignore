@@ -181,6 +181,7 @@ dmypy.json
 /materials/
 /task.md
 /module-2-overview.md
+/module-3-overview.md
 
 # pytype static type analyzer
 .pytype/

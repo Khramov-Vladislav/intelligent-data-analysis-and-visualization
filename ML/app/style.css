@@ -97,3 +97,24 @@
 .inference-table table {
   min-width: 520px;
 }
+
+.flow-section {
+  margin-bottom: 12px;
+}
+
+.flow-card-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+  gap: 12px;
+}
+
+.flow-card-grid > * {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 800px) {
+  .flow-card-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
