@@ -6,7 +6,7 @@ from taipy.gui import Markdown, State, invoke_long_callback, notify
 import charts
 from advisor import NUMERIC, SHAP_SAMPLE, build_features, load_raw, partial_dependence, pdp_grid
 from explain import card_explanation
-from pages.advisor import _meta, _model, baseline_xai_ready, course_mode, model_ready
+from pages.advisor import _meta, _model, baseline_xai_ready
 
 _tau = float(_meta["threshold"])
 shap_ready = baseline_xai_ready and SHAP_SAMPLE.exists()
@@ -14,12 +14,6 @@ shap_status = (
     "Глобальные графики построены по предрасчитанным SHAP-значениям отложенной выборки."
     if shap_ready else f"Нет файла {SHAP_SAMPLE.name} — запустите model/train_baseline.py."
 )
-
-if course_mode:
-    shap_status = (
-        "Для модели курса подключён инференс. Её объяснения добавляются в практике 3.7."
-        if model_ready else "Загрузите модель курса, чтобы использовать её объяснения."
-    )
 
 
 def _examples(sample) -> dict[str, int]:

@@ -302,6 +302,37 @@ def shap_importance(values: np.ndarray, features, top: int = 15) -> go.Figure:
     return fig
 
 
+def shap_top_bars(contributions: pd.DataFrame) -> go.Figure:
+    top = contributions.head(10).iloc[::-1]
+    values = top["Вклад"]
+    fig = go.Figure(go.Bar(
+        x=values, y=top["Признак"], orientation="h",
+        marker_color=np.where(values.gt(0), SIGNAL, ACCENT),
+        hovertemplate="%{y}<br>Вклад %{x:+.4f}<extra></extra>",
+    ))
+    _layout(fig, "Десять самых больших вкладов", height=350)
+    fig.update_xaxes(title="Вклад в логарифме шансов", zeroline=True, zerolinecolor="#DADCE0")
+    fig.update_yaxes(automargin=True)
+    fig.update_layout(margin=dict(l=10, r=20, t=50, b=50))
+    return fig
+
+
+def shap_importance_comparison(practice: pd.Series, test: pd.Series) -> go.Figure:
+    fields = practice.nlargest(5).index.union(test.nlargest(5).index, sort=False)[::-1]
+    fig = go.Figure()
+    for sample, values, color in (("Практика", practice, ACCENT), ("Тест", test, GREY)):
+        fig.add_bar(
+            x=values.reindex(fields), y=fields, name=sample, orientation="h", marker_color=color,
+            hovertemplate=f"{sample} · %{{y}}<br>Средний |SHAP| %{{x:.3f}}<extra></extra>",
+        )
+    _layout(fig, "Топ-5 признаков на практике и тесте", height=350)
+    fig.update_layout(barmode="group", showlegend=True, legend=dict(orientation="h", y=1.07, x=1, xanchor="right"),
+                      margin=dict(l=10, r=30, t=66, b=50))
+    fig.update_xaxes(title="Средний модуль вклада SHAP")
+    fig.update_yaxes(automargin=True)
+    return fig
+
+
 def shap_by_value(values: np.ndarray, data: np.ndarray, feature: str, features, top: int = 12,
                   min_count: int = 20) -> go.Figure:
     """Вклад значений одного признака: средний SHAP по каждому частому значению (с числом карточек).
